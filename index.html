@@ -113,10 +113,10 @@
         const welcomeState = document.getElementById('welcomeState');
         const dashboardContent = document.getElementById('dashboardContent');
 
-        // 페이지 로드 시 분할된 corps_financials_part_X.json 파일들을 순차적으로 불러와 병합
+        // 페이지 로드 시 분할된 JSON 파일들을 순차적으로 불러와 객체 맵으로 재구성
         window.onload = async () => {
             try {
-                financialMap = {};
+                let allRecords = [];
                 let partIndex = 1;
                 
                 while (true) {
@@ -126,13 +126,38 @@
                         if (!response.ok) break; 
                         
                         const partData = await response.json();
-                        Object.assign(financialMap, partData);
-                        console.log(`✅ ${partFilename} 로드 완료`);
+                        allRecords = allRecords.concat(partData);
+                        console.log(`✅ ${partFilename} 로드 완료 (${partData.length}건)`);
                     } catch (e) {
                         break;
                     }
                     partIndex++;
                 }
+
+                financialMap = {};
+                allRecords.forEach(item => {
+                    const corpName = item['회사명'] || item['corp_name'] || item['corpName'];
+                    const corpCode = item['종목코드'] || item['stock_code'] || item['stockCode'] || '';
+                    const year = item['사업연도'] || item['bsns_year'] || item['year'];
+                    
+                    if (!corpName) return;
+
+                    if (!financialMap[corpName]) {
+                        financialMap[corpName] = {
+                            code: corpCode,
+                            dartCode: item['고유번호'] || item['corp_code'] || '',
+                            financials: {}
+                        };
+                    }
+
+                    if (year) {
+                        financialMap[corpName].financials[year] = {
+                            revenue: parseFloat(item['매출액'] || item['revenue'] || 0),
+                            op: parseFloat(item['영업이익'] || item['op'] || 0),
+                            net: parseFloat(item['당기순이익'] || item['net'] || 0)
+                        };
+                    }
+                });
 
                 console.log(`🎉 모든 재무 데이터 통합 로드 성공: 총 ${Object.keys(financialMap).length}개 기업`);
             } catch (err) {
@@ -151,19 +176,22 @@
             }
 
             const matchedCorps = Object.keys(financialMap).filter(corpName => {
+                if (!corpName) return false;
                 const info = financialMap[corpName];
-                return corpName.toLowerCase().includes(query) || info.code.includes(query);
+                const nameStr = String(corpName).toLowerCase();
+                const codeStr = info && info.code != null ? String(info.code).toLowerCase() : '';
+                return nameStr.includes(query) || codeStr.includes(query);
             }).slice(0, 20);
             
             if (matchedCorps.length > 0) {
                 dropdown.classList.remove('hidden');
                 matchedCorps.forEach(corpName => {
-                    const info = financialMap[corpName];
+                    const info = financialMap[corpName] || {};
                     const div = document.createElement('div');
                     div.className = 'px-4 py-3 text-sm hover:bg-slate-700/80 cursor-pointer flex justify-between items-center transition';
                     div.innerHTML = `
                         <span class="font-medium text-slate-100">${corpName}</span>
-                        <span class="text-xs font-mono bg-slate-700 px-2 py-0.5 rounded text-slate-300">${info.code}</span>
+                        <span class="text-xs font-mono bg-slate-700 px-2 py-0.5 rounded text-slate-300">${info.code || '-'}</span>
                     `;
                     div.onclick = () => {
                         searchInput.value = corpName;
