@@ -31,8 +31,8 @@
         input[type="text"]:focus { border-color: var(--primary); }
         
         /* 자동완성 드롭다운 */
-        .autocomplete-items { position: absolute; border: 1px solid #ccd1d9; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; background-color: #fff; border-radius: 0 0 6px 6px; max-height: 180px; overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .autocomplete-item { padding: 9px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f1f1f1; }
+        .autocomplete-items { position: absolute; border: 1px solid #ccd1d9; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; background-color: #fff; border-radius: 0 0 6px 6px; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .autocomplete-item { padding: 10px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f1f1f1; color: #333; }
         .autocomplete-item:hover { background-color: #f1f4f8; color: var(--primary); font-weight: bold; }
 
         /* 기업 탭 바 영역 */
@@ -78,13 +78,13 @@
 
     <header>
         <h1>상장사 10년 재무제표 종합 분석 대시보드</h1>
-        <div class="subtitle">검색한 기업들이 상단 탭에 저장되어 언제든 간편하게 전환하며 비교할 수 있습니다.</div>
+        <div class="subtitle">기업명을 검색하면 상단 탭에 저장되어 언제든 간편하게 전환하며 비교할 수 있습니다.</div>
     </header>
 
     <!-- 검색 컨트롤 패널 -->
     <div class="control-panel">
         <div class="search-container">
-            <label for="corpSearchInput">기업 검색 (예: '삼' 입력 시 자동완성)</label>
+            <label for="corpSearchInput">기업 검색</label>
             <input type="text" id="corpSearchInput" placeholder="기업명을 입력하세요 (예: 삼성전자, LK삼양...)" oninput="onSearchInput(this.value)" autocomplete="off">
             <div id="autocompleteList" class="autocomplete-items"></div>
         </div>
@@ -138,9 +138,9 @@
 
     <script>
         let globalFinancialData = [];
-        let uniqueCorps = []; // { code, name } 배열
+        let uniqueCorps = []; 
         let chartInstances = {};
-        let openedTabs = []; // 열린 탭 객체 배열 { code, name }
+        let openedTabs = []; 
         let activeTabCode = null;
 
         // 1. 프로그레스바 및 잔여 시간 계산 로딩 로직
@@ -189,26 +189,40 @@
             }, 400);
         });
 
-        // corp_code 기준으로 고유 기업 리스트 추출 (사명 변경 대응)
+        // 고유번호 및 기업명 유연하게 추출 (다양한 키 이름 완벽 대응)
         function extractUniqueCorps(data) {
             const corpMap = new Map();
             data.forEach(item => {
-                const code = item.corp_code || item.회사고유번호 || item.stock_code;
-                const name = item.corp_name || item.회사명;
-                if (code && name) {
-                    corpMap.set(code, name); // 최신 혹은 대표 사명 매핑
+                const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
+                const name = item.corp_name || item.회사명 || item.stock_name || item.name;
+                if (name) {
+                    const cleanName = String(name).trim();
+                    const cleanCode = code ? String(code).trim() : cleanName; // 코드가 없으면 이름으로 대체
+                    corpMap.set(cleanCode, cleanName);
                 }
             });
             uniqueCorps = Array.from(corpMap.entries()).map(([code, name]) => ({ code, name }));
             uniqueCorps.sort((a, b) => a.name.localeCompare(b.name));
+            console.log("추출된 고유 기업 수:", uniqueCorps.length);
         }
 
         function onSearchInput(val) {
             const listDiv = document.getElementById("autocompleteList");
             listDiv.innerHTML = "";
-            if (!val.trim()) return;
+            const query = val.trim();
+            if (!query) return;
 
-            const matched = uniqueCorps.filter(item => item.name.includes(val)).slice(0, 12);
+            const matched = uniqueCorps.filter(item => item.name.toLowerCase().includes(query.toLowerCase())).slice(0, 15);
+            
+            if (matched.length === 0) {
+                const noItem = document.createElement("div");
+                noItem.classList.add("autocomplete-item");
+                noItem.style.color = "#888";
+                noItem.textContent = "검색 결과가 없습니다.";
+                listDiv.appendChild(noItem);
+                return;
+            }
+
             matched.forEach(corp => {
                 const itemDiv = document.createElement("div");
                 itemDiv.classList.add("autocomplete-item");
@@ -259,7 +273,7 @@
             const container = document.getElementById("tabsContainer");
             container.innerHTML = "";
             if (openedTabs.length === 0) {
-                container.innerHTML = `<span style="font-size:12px; color:#888; padding:5px;">열린 기업 탭이 없습니다. 검색창에서 기업을 추가해보세요.</span>`;
+                container.innerHTML = `<span style="font-size:12px; color:#888; padding:5px;">열린 기업 탭이 없습니다. 검색창에서 기업을 검색해보세요.</span>`;
                 return;
             }
             openedTabs.forEach(tabObj => {
@@ -324,15 +338,16 @@
             return value;
         }
 
-        // 고유번호(corp_code) 기반으로 필터링하여 사명 변경 전후 데이터 통합 조회
+        // 고유번호 또는 사명 매칭으로 데이터 통합 조회
         function selectAndRenderCorp(selectedCorpCode, selectedCorpName) {
             const tableHead = document.querySelector("#financialTable thead tr");
             const tableBody = document.getElementById("tableBody");
             document.getElementById("reportTitle").innerText = `[${selectedCorpName}] 10개년 재무제표 요약표`;
 
             const corpRows = globalFinancialData.filter(item => {
-                const code = item.corp_code || item.회사고유번호 || item.stock_code;
-                return code === selectedCorpCode;
+                const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
+                const name = item.corp_name || item.회사명 || item.stock_name || item.name;
+                return (code && String(code).trim() === String(selectedCorpCode)) || (name && String(name).trim() === selectedCorpName);
             });
             
             const yearsSet = new Set();
@@ -341,7 +356,10 @@
                 if (yearVal.length >= 4) yearsSet.add(yearVal.substring(0, 4));
             });
             const sortedYears = Array.from(yearsSet).sort();
-            if (sortedYears.length === 0) return;
+            if (sortedYears.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="11" class="no-data">해당 기업의 재무 데이터가 없습니다.</td></tr>`;
+                return;
+            }
 
             let headerHTML = `<th class="left" style="min-width: 180px;">주요 재무항목</th>`;
             sortedYears.forEach(year => { headerHTML += `<th>${year}년</th>`; });
