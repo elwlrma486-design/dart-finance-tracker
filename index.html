@@ -2,57 +2,83 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>반도체 및 상장사 재무 분석 대시보드</title>
+    <title>한국 상장사 10년 재무제표 종합 분석 대시보드</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f6f9; color: #333; }
-        h1 { color: #2c3e50; }
-        .control-panel { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-        .status { font-weight: bold; color: #e67e22; }
-        select, button { padding: 8px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
-        table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
-        th, td { border-bottom: 1px solid #eee; padding: 12px 15px; text-align: right; }
-        th { background-color: #34495e; color: white; text-align: center; }
+        :root { --primary: #1b365d; --secondary: #4b6b94; --bg: #f4f6f9; --card-bg: #ffffff; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: var(--bg); color: #333; }
+        header { margin-bottom: 25px; }
+        h1 { color: var(--primary); margin-bottom: 5px; }
+        .subtitle { color: #666; font-size: 14px; }
+        
+        /* 컨트롤 패널 */
+        .control-panel { background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .search-box { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 250px; }
+        label { font-weight: bold; font-size: 13px; color: #444; }
+        select, input { padding: 10px; font-size: 14px; border: 1px solid #ccd1d9; border-radius: 6px; outline: none; }
+        select:focus, input:focus { border-color: var(--primary); }
+        .status { font-weight: 600; color: #e67e22; font-size: 14px; margin-top: 10px; }
+
+        /* 대시보드 컨텐츠 영역 */
+        .dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+        .card { background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .card h3 { margin-top: 0; color: var(--primary); border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
+
+        /* 테이블 스타일 */
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; white-space: nowrap; }
+        th, td { border: 1px solid #e1e4e8; padding: 10px 12px; text-align: right; font-size: 13px; }
+        th { background-color: var(--primary); color: white; text-align: center; }
         td.left { text-align: left; }
-        tr:hover { background-color: #f8f9fa; }
+        tr:nth-child(even) { background-color: #fafbfc; }
+        tr:hover { background-color: #f1f4f8; }
+        
+        .no-data { text-align: center; padding: 40px; color: #888; font-size: 15px; }
     </style>
 </head>
 <body>
 
-    <h1>상장사 10년 재무 분석 대시보드</h1>
-    
-    <!-- 컨트롤 패널 (전체 기업 드롭다운 및 상태 표시) -->
+    <header>
+        <h1>반도체 및 주요 상장사 10년 재무제표 분석</h1>
+        <div class="subtitle">OpenDART 데이터를 기반으로 한 다개년 시계열 재무 구조 분석 대시보드</div>
+    </header>
+
+    <!-- 검색 및 컨트롤 패널 -->
     <div class="control-panel">
-        <div>
-            <label for="corpSelect"><strong>기업 선택:</strong></label>
-            <select id="corpSelect" onchange="filterDataByCorp()">
-                <option value="ALL">전체 기업 보기</option>
+        <div class="search-box">
+            <label for="corpSelect">기업 선택 (검색 및 드롭다운)</label>
+            <select id="corpSelect" onchange="onCorpSelected()">
+                <option value="">-- 기업을 선택하세요 (전체 파트 자동 연동) --</option>
             </select>
         </div>
-        <div id="loadingStatus" class="status">데이터 로딩 중...</div>
+        <div>
+            <div id="loadingStatus" class="status">데이터 파트 로딩 대기 중...</div>
+        </div>
     </div>
 
-    <!-- 재무 데이터 테이블 -->
-    <table id="financialTable">
-        <thead>
-            <tr>
-                <th class="left">기업명</th>
-                <th>결산기준일</th>
-                <th>자산총계</th>
-                <th>부채총계</th>
-                <th>자본총계</th>
-                <th>매출액</th>
-                <th>영업이익</th>
-            </tr>
-        </thead>
-        <tbody id="tableBody">
-            <!-- 동적 데이터 삽입 영역 -->
-        </tbody>
-    </table>
+    <!-- 상세 분석 리포트 영역 -->
+    <div class="dashboard-grid">
+        <div class="card">
+            <h3 id="reportTitle">선택된 기업 10개년 재무 요약표</h3>
+            <div class="table-responsive">
+                <table id="financialTable">
+                    <thead>
+                        <tr>
+                            <th class="left">계정 항목명</th>
+                            <!-- 10개년 연도가 동적으로 들어갈 자리 -->
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr><td colspan="11" class="no-data">기업을 선택하시면 10개년 재무제표 시계열 분석표가 표시됩니다.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
     <script>
         let globalFinancialData = [];
 
-        // 1. corps_financials_part_1.json부터 끝까지 순차적으로 모두 불러오는 함수
+        // 1. corps_financials_part_1.json 부터 끝까지 순차적으로 비동기 병합 로드
         async function fetchAllFinancialParts() {
             const statusDiv = document.getElementById("loadingStatus");
             let combinedData = [];
@@ -73,7 +99,7 @@
                     const partData = await response.json();
                     if (Array.isArray(partData)) {
                         combinedData = combinedData.concat(partData);
-                    } else if (typeof partData === 'object') {
+                    } else if (typeof partData === 'object' && partData !== null) {
                         combinedData.push(partData);
                     }
 
@@ -83,86 +109,171 @@
                 }
             }
 
-            statusDiv.innerText = `로드 완료 (총 ${combinedData.length.toLocaleString()}개 항목)`;
+            statusDiv.innerText = `총 ${partIndex - 1}개 파트 파일 로드 완료 (총 데이터 행: ${combinedData.length.toLocaleString()}개)`;
             return combinedData;
         }
 
-        // 2. 숫자 포맷팅 (3자리 콤마)
-        function formatNumber(val) {
-            if (val === null || val === undefined || isNaN(val)) return "-";
-            return Number(val).toLocaleString();
-        }
-
-        // 3. 드롭다운 목록 생성 (전체 기업 리스트 바인딩)
-        function populateCorpDropdown(data) {
+        // 2. 드롭다운 목록 초기화 (기업명 중복 제거 후 가나다순 정렬)
+        function initCorpDropdown(data) {
             const selectElem = document.getElementById("corpSelect");
-            
-            // 중복 없는 기업명 추출 (corp_name 또는 회사명 필드 기준)
-            const corpSet = new Set();
+            const corpMap = new Map(); // key: corp_code 또는 name, value: displayName
+
             data.forEach(item => {
-                const name = item.corp_name || item.회사Name || item.회사명;
-                if (name) corpSet.add(name);
+                const name = item.corp_name || item.회사명;
+                const code = item.corp_code || item.stock_code || name;
+                if (name) {
+                    corpMap.set(code, name);
+                }
             });
 
-            const sortedNames = Array.from(corpSet).sort();
-            
-            sortedNames.forEach(corpName => {
+            // 이름 기준으로 정렬
+            const sortedCorps = Array.from(corpMap.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+
+            sortedCorps.forEach(([code, name]) => {
                 const option = document.createElement("option");
-                option.value = corpName;
-                option.textContent = corpName;
+                option.value = name; // 여기서는 기업명 기준으로 필터링
+                option.textContent = name;
                 selectElem.appendChild(option);
             });
         }
 
-        // 4. 테이블에 데이터 렌더링
-        function renderTable(dataToRender) {
-            const tbody = document.getElementById("tableBody");
-            tbody.innerHTML = "";
+        // 3. 숫자 천단위 콤마 포맷팅
+        function formatAmount(val) {
+            if (val === null || val === undefined || val === "" || val === "-") return "-";
+            const num = Number(String(val).replace(/,/g, ''));
+            if (isNaN(num)) return val;
+            // 억 단위 혹은 원 단위에 맞춰 그대로 출력 (콤마 적용)
+            return num.toLocaleString();
+        }
 
-            if (!dataToRender || dataToRender.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">표시할 데이터가 없습니다.</td></tr>`;
+        // 4. 특정 기업 선택 시 10개년 시계열 재무 분석표 렌더링
+        function onCorpSelected() {
+            const selectedCorpName = document.getElementById("corpSelect").value;
+            const tableHead = document.querySelector("#financialTable thead tr");
+            const tableBody = document.getElementById("tableBody");
+            const reportTitle = document.getElementById("reportTitle");
+
+            if (!selectedCorpName) {
+                reportTitle.innerText = "선택된 기업 10개년 재무 요약표";
+                tableHead.innerHTML = `<th class="left">계정 항목명</th>`;
+                tableBody.innerHTML = `<tr><td colspan="2" class="no-data">기업을 선택하시면 10개년 재무제표 시계열 분석표가 표시됩니다.</td></tr>`;
                 return;
             }
 
-            // 성능을 위해 최대 200건만 먼저 렌더링 (필요시 조절 가능)
-            dataToRender.slice(0, 200).forEach(item => {
-                const row = document.createElement("tr");
-                const corpName = item.corp_name || item.회사명 || "-";
-                const bsnsYear = item.bsns_year || item.결산기준일 || "-";
+            reportTitle.innerText = `[${selectedCorpName}] 10개년 주요 재무제표 시계열 분석`;
 
-                row.innerHTML = `
-                    <td class="left"><strong>${corpName}</strong></td>
-                    <td style="text-align:center;">${bsnsYear}</td>
-                    <td>${formatNumber(item.자산총계 || item.total_assets)}</td>
-                    <td>${formatNumber(item.부채총계 || item.total_liabilities)}</td>
-                    <td>${formatNumber(item.자본총계 || item.total_equity)}</td>
-                    <td>${formatNumber(item.매출액 || item.revenue)}</td>
-                    <td>${formatNumber(item.영업이익 || item.operating_income)}</td>
-                `;
-                tbody.appendChild(row);
+            // 해당 기업 데이터 필터링
+            const corpRows = globalFinancialData.filter(item => (item.corp_name || item.회사명) === selectedCorpName);
+
+            // 존재하는 연도 추출 및 정렬 (오름차순)
+            const yearsSet = new Set();
+            corpRows.forEach(item => {
+                const year = item.bsns_year || item.결산기준일;
+                if (year) yearsSet.add(String(year).substring(0, 4));
             });
-        }
+            const sortedYears = Array.from(yearsSet).sort();
 
-        // 5. 드롭다운 선택 변경 시 필터링 기능
-        function filterDataByCorp() {
-            const selectedCorp = document.getElementById("corpSelect").value;
-            
-            if (selectedCorp === "ALL") {
-                renderTable(globalFinancialData);
-            } else {
-                const filtered = globalFinancialData.filter(item => {
-                    const name = item.corp_name || item.회사명;
-                    return name === selectedCorp;
-                });
-                renderTable(filtered);
+            if (sortedYears.length === 0) {
+                tableBody.innerHTML = `<tr><td class="no-data">해당 기업의 연도별 재무 데이터가 없습니다.</td></tr>`;
+                return;
             }
+
+            // 테이블 헤더 구성 (계정명 + 연도들)
+            let headerHTML = `<th class="left" style="min-width: 200px;">주요 재무항목</th>`;
+            sortedYears.forEach(year => {
+                headerHTML += `<th>${year}년</th>`;
+            });
+            tableHead.innerHTML = headerHTML;
+
+            // 주요 다루는 재무 계정 정의 (자산총계, 부채총계, 자본총계, 매출액, 영업이익 등)
+            // OpenDART 데이터의 account_nm 이나 필드명 대응
+            const targetAccounts = [
+                "자산총계", "부채총계", "자본총계", "매출액", "영업이익", "당기순이익",
+                "유동자산", "비유동자산", "유동부채", "비유동부채"
+            ];
+
+            // 데이터 구조 매핑 (계정별 -> 연도별 금액 맵 생성)
+            const accountDataMap = {};
+
+            corpRows.forEach(item => {
+                const year = String(item.bsns_year || item.결산기준일 || "").substring(0, 4);
+                // 키가 account_nm 형태이거나 직접 필드명인 경우 모두 대응
+                const accName = item.account_nm || item.항목명 || item.account_name;
+                // 당기 금액 (thstrm_amount 또는 당기 필드)
+                const amount = item.thstrm_amount || item.당기금액 || item.당기;
+
+                if (accName && year) {
+                    // 표준화 작업 (공백 제거)
+                    const cleanName = accName.replace(/\s+/g, '');
+                    if (!accountDataMap[cleanName]) {
+                        accountDataMap[cleanName] = { originalName: accName, values: {} };
+                    }
+                    accountDataMap[cleanName].values[year] = amount;
+                }
+            });
+
+            // 테이블 바디 구성
+            let bodyHTML = "";
+            
+            // 등록된 계정 순서대로 출력, 없으면 데이터에 있는 항목들 출력
+            const displayedKeys = Object.keys(accountDataMap);
+
+            if (displayedKeys.length === 0) {
+                // 만약 계정별 구조가 아니라 단일 행 객체 구조라면 (예: row 하나에 자산, 부채가 다 들어있는 경우)
+                bodyHTML = renderFlatRowStructure(corpRows, sortedYears);
+            } else {
+                displayedKeys.forEach(key => {
+                    const rowInfo = accountDataMap[key];
+                    bodyHTML += `<tr>`;
+                    bodyHTML += `<td class="left"><strong>${rowInfo.originalName}</strong></td>`;
+                    
+                    sortedYears.forEach(year => {
+                        const val = rowInfo.values[year];
+                        bodyHTML += `<td>${formatAmount(val)}</td>`;
+                    });
+                    bodyHTML += `</tr>`;
+                });
+            }
+
+            tableBody.innerHTML = bodyHTML;
         }
 
-        // 페이지가 열릴 때 전체 데이터 로드 및 초기화 수행
+        // 플랫 구조(한 행에 여러 필드가 있는 경우) 보조 렌더링 함수
+        function renderFlatRowStructure(rows, sortedYears) {
+            let html = "";
+            const metrics = [
+                { label: "자산총계", keys: ["자산총계", "total_assets"] },
+                { label: "부채총계", keys: ["부채총계", "total_liabilities"] },
+                { label: "자본총계", keys: ["자본총계", "total_equity"] },
+                { label: "매출액", keys: ["매출액", "revenue"] },
+                { label: "영업이익", keys: ["영업이익", "operating_income"] },
+                { label: "당기순이익", keys: ["당기순이익", "net_income"] }
+            ];
+
+            metrics.forEach(metric => {
+                html += `<tr><td class="left"><strong>${metric.label}</strong></td>`;
+                sortedYears.forEach(year => {
+                    const matched = rows.find(r => String(r.bsns_year || r.결산기준일).startsWith(year));
+                    let val = "-";
+                    if (matched) {
+                        for (let k of metric.keys) {
+                            if (matched[k] !== undefined) {
+                                val = matched[k];
+                                break;
+                            }
+                        }
+                    }
+                    html += `<td>${formatAmount(val)}</td>`;
+                });
+                html += `</tr>`;
+            });
+            return html;
+        }
+
+        // 페이지 로드 시 전체 파트 데이터 비동기 병합 실행
         window.addEventListener("DOMContentLoaded", async () => {
             globalFinancialData = await fetchAllFinancialParts();
-            populateCorpDropdown(globalFinancialData);
-            renderTable(globalFinancialData);
+            initCorpDropdown(globalFinancialData);
         });
     </script>
 </body>
