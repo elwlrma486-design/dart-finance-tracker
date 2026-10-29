@@ -85,7 +85,7 @@
     <div class="control-panel">
         <div class="search-container">
             <label for="corpSearchInput">기업 검색 (예: '삼' 입력 시 자동완성)</label>
-            <input type="text" id="corpSearchInput" placeholder="기업명을 입력하세요 (예: 삼성전자, SK하이닉스...)" oninput="onSearchInput(this.value)" autocomplete="off">
+            <input type="text" id="corpSearchInput" placeholder="기업명을 입력하세요 (예: 삼성전자, LK삼양...)" oninput="onSearchInput(this.value)" autocomplete="off">
             <div id="autocompleteList" class="autocomplete-items"></div>
         </div>
     </div>
@@ -138,10 +138,10 @@
 
     <script>
         let globalFinancialData = [];
-        let uniqueCorps = [];
+        let uniqueCorps = []; // { code, name } 배열
         let chartInstances = {};
-        let openedTabs = [];
-        let activeTab = null;
+        let openedTabs = []; // 열린 탭 객체 배열 { code, name }
+        let activeTabCode = null;
 
         // 1. 프로그레스바 및 잔여 시간 계산 로딩 로직
         window.addEventListener("DOMContentLoaded", async () => {
@@ -149,8 +149,6 @@
             let combinedData = [];
             let partIndex = 1;
             let hasMore = true;
-            
-            // 총 파트 파일이 대략 60여 개라고 가정하고 로딩 바 진행률 시뮬레이션
             const estimatedTotalParts = 60; 
 
             while (hasMore) {
@@ -162,11 +160,9 @@
                     if (Array.isArray(partData)) combinedData = combinedData.concat(partData);
                     else if (typeof partData === 'object' && partData !== null) combinedData.push(partData);
                     
-                    // 퍼센트 계산
                     const progressPercent = Math.min(Math.floor((partIndex / estimatedTotalParts) * 100), 95);
                     document.getElementById("progressBar").style.width = progressPercent + "%";
                     
-                    // 경과 시간 및 남은 예상 시간 계산
                     const elapsedSec = (Date.now() - startTime) / 1000;
                     const estimatedTotalTime = elapsedSec / (partIndex / estimatedTotalParts);
                     const remainingSec = Math.max(Math.ceil(estimatedTotalTime - elapsedSec), 1);
@@ -186,7 +182,6 @@
             globalFinancialData = combinedData;
             extractUniqueCorps(globalFinancialData);
 
-            // 로딩 모달 페이드아웃
             setTimeout(() => {
                 const overlay = document.getElementById("loadingOverlay");
                 overlay.style.opacity = '0';
@@ -194,13 +189,18 @@
             }, 400);
         });
 
+        // corp_code 기준으로 고유 기업 리스트 추출 (사명 변경 대응)
         function extractUniqueCorps(data) {
-            const corpSet = new Set();
+            const corpMap = new Map();
             data.forEach(item => {
+                const code = item.corp_code || item.회사고유번호 || item.stock_code;
                 const name = item.corp_name || item.회사명;
-                if (name) corpSet.add(name);
+                if (code && name) {
+                    corpMap.set(code, name); // 최신 혹은 대표 사명 매핑
+                }
             });
-            uniqueCorps = Array.from(corpSet).sort();
+            uniqueCorps = Array.from(corpMap.entries()).map(([code, name]) => ({ code, name }));
+            uniqueCorps.sort((a, b) => a.name.localeCompare(b.name));
         }
 
         function onSearchInput(val) {
@@ -208,15 +208,15 @@
             listDiv.innerHTML = "";
             if (!val.trim()) return;
 
-            const matched = uniqueCorps.filter(name => name.includes(val)).slice(0, 12);
-            matched.forEach(corpName => {
+            const matched = uniqueCorps.filter(item => item.name.includes(val)).slice(0, 12);
+            matched.forEach(corp => {
                 const itemDiv = document.createElement("div");
                 itemDiv.classList.add("autocomplete-item");
-                itemDiv.textContent = corpName;
+                itemDiv.textContent = corp.name;
                 itemDiv.onclick = function() {
                     document.getElementById("corpSearchInput").value = "";
                     listDiv.innerHTML = "";
-                    addAndOpenTab(corpName);
+                    addAndOpenTab(corp.code, corp.name);
                 };
                 listDiv.appendChild(itemDiv);
             });
@@ -228,24 +228,27 @@
             }
         });
 
-        function addAndOpenTab(corpName) {
-            if (!openedTabs.includes(corpName)) openedTabs.push(corpName);
-            activeTab = corpName;
+        function addAndOpenTab(code, name) {
+            if (!openedTabs.some(t => t.code === code)) {
+                openedTabs.push({ code, name });
+            }
+            activeTabCode = code;
             renderTabs();
-            selectAndRenderCorp(corpName);
+            selectAndRenderCorp(code, name);
         }
 
-        function closeTab(e, corpName) {
+        function closeTab(e, code) {
             e.stopPropagation();
-            const index = openedTabs.indexOf(corpName);
+            const index = openedTabs.findIndex(t => t.code === code);
             if (index > -1) openedTabs.splice(index, 1);
 
-            if (activeTab === corpName) {
+            if (activeTabCode === code) {
                 if (openedTabs.length > 0) {
-                    activeTab = openedTabs[openedTabs.length - 1];
-                    selectAndRenderCorp(activeTab);
+                    const lastTab = openedTabs[openedTabs.length - 1];
+                    activeTabCode = lastTab.code;
+                    selectAndRenderCorp(lastTab.code, lastTab.name);
                 } else {
-                    activeTab = null;
+                    activeTabCode = null;
                     clearDashboard();
                 }
             }
@@ -259,11 +262,15 @@
                 container.innerHTML = `<span style="font-size:12px; color:#888; padding:5px;">열린 기업 탭이 없습니다. 검색창에서 기업을 추가해보세요.</span>`;
                 return;
             }
-            openedTabs.forEach(corp => {
+            openedTabs.forEach(tabObj => {
                 const tab = document.createElement("div");
-                tab.className = `tab-item ${corp === activeTab ? 'active' : ''}`;
-                tab.innerHTML = `<span>${corp}</span> <span class="tab-close" onclick="closeTab(event, '${corp}')">&times;</span>`;
-                tab.onclick = () => { activeTab = corp; renderTabs(); selectAndRenderCorp(corp); };
+                tab.className = `tab-item ${tabObj.code === activeTabCode ? 'active' : ''}`;
+                tab.innerHTML = `<span>${tabObj.name}</span> <span class="tab-close" onclick="closeTab(event, '${tabObj.code}')">&times;</span>`;
+                tab.onclick = () => { 
+                    activeTabCode = tabObj.code; 
+                    renderTabs(); 
+                    selectAndRenderCorp(tabObj.code, tabObj.name); 
+                };
                 container.appendChild(tab);
             });
         }
@@ -285,7 +292,6 @@
             return num.toLocaleString();
         }
 
-        // 2. 10개년 연도 누락 방지 및 유연한 추출 함수
         function getNormalizedMetricValue(accountMap, rows, year, targetType) {
             let value = null;
             for (let cleanKey in accountMap) {
@@ -318,14 +324,17 @@
             return value;
         }
 
-        function selectAndRenderCorp(selectedCorpName) {
+        // 고유번호(corp_code) 기반으로 필터링하여 사명 변경 전후 데이터 통합 조회
+        function selectAndRenderCorp(selectedCorpCode, selectedCorpName) {
             const tableHead = document.querySelector("#financialTable thead tr");
             const tableBody = document.getElementById("tableBody");
             document.getElementById("reportTitle").innerText = `[${selectedCorpName}] 10개년 재무제표 요약표`;
 
-            const corpRows = globalFinancialData.filter(item => (item.corp_name || item.회사명) === selectedCorpName);
+            const corpRows = globalFinancialData.filter(item => {
+                const code = item.corp_code || item.회사고유번호 || item.stock_code;
+                return code === selectedCorpCode;
+            });
             
-            // 데이터에 존재하는 모든 연도를 빠짐없이 수집하여 정렬
             const yearsSet = new Set();
             corpRows.forEach(item => {
                 const yearVal = String(item.bsns_year || item.결산기준일 || "").trim();
