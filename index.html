@@ -12,12 +12,16 @@
         h1 { color: var(--primary); margin-bottom: 5px; font-size: 22px; }
         .subtitle { color: #666; font-size: 13px; }
 
-        /* 최초 로딩 모달 오버레이 */
+        /* 로딩바 모달 오버레이 */
         #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(27, 54, 93, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; transition: opacity 0.5s ease; }
-        .spinner { width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; margin-bottom: 20px; }
+        .spinner { width: 45px; height: 45px; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; margin-bottom: 15px; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        #loadingMessage { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
-        #loadingTimer { font-size: 14px; color: #f1c40f; }
+        #loadingMessage { font-size: 16px; font-weight: bold; margin-bottom: 10px; text-align: center; }
+        
+        /* 프로그레스바 스타일 */
+        .progress-bar-container { width: 320px; background: rgba(255,255,255,0.2); border-radius: 10px; height: 16px; overflow: hidden; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.4); }
+        .progress-bar { width: 0%; height: 100%; background: #2ecc71; transition: width 0.3s ease; }
+        #loadingSubText { font-size: 13px; color: #f1c40f; }
 
         /* 검색 컨트롤 패널 */
         .control-panel { background: var(--card-bg); padding: 15px 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
@@ -62,11 +66,14 @@
 </head>
 <body>
 
-    <!-- 최초 진입 시 모래시계 및 로딩 화면 -->
+    <!-- 로딩바 및 남은 시간 안내 모달 -->
     <div id="loadingOverlay">
         <div class="spinner"></div>
-        <div id="loadingMessage">국내 기업 재무상태표 및 데이터베이스 업데이트 중...</div>
-        <div id="loadingTimer">경과 시간: 0초</div>
+        <div id="loadingMessage">국내 상장사 재무 데이터베이스 동기화 중...</div>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div id="loadingSubText">파트 파일 로딩 준비 중... (남은 시간 계산 중)</div>
     </div>
 
     <header>
@@ -84,11 +91,9 @@
     </div>
 
     <!-- 열린 기업 탭 바 -->
-    <div class="tabs-container" id="tabsContainer">
-        <!-- 탭들이 동적으로 추가되는 영역 -->
-    </div>
+    <div class="tabs-container" id="tabsContainer"></div>
 
-    <!-- 상단 핵심 요약 카드 영역 -->
+    <!-- 상단 핵심 요약 카드 -->
     <div class="summary-grid" id="summaryCards">
         <div class="summary-card"><div class="title">최근 매출액</div><div class="value" id="cardRev">-</div></div>
         <div class="summary-card"><div class="title">최근 영업이익</div><div class="value" id="cardOp">-</div></div>
@@ -116,7 +121,7 @@
         </div>
     </div>
 
-    <!-- 10개년 재무 요약표 카드 -->
+    <!-- 10개년 재무 요약표 -->
     <div class="card">
         <h3 id="reportTitle">10개년 재무제표 요약표</h3>
         <div class="table-responsive">
@@ -135,35 +140,18 @@
         let globalFinancialData = [];
         let uniqueCorps = [];
         let chartInstances = {};
-        
-        // 탭 상태 관리 구조
-        let openedTabs = []; // 열린 기업명 배열
-        let activeTab = null; // 현재 보고 있는 기업명
+        let openedTabs = [];
+        let activeTab = null;
 
-        // 1. 페이지 진입 시 타이머와 함께 파트 파일 로드
+        // 1. 프로그레스바 및 잔여 시간 계산 로딩 로직
         window.addEventListener("DOMContentLoaded", async () => {
-            let seconds = 0;
-            const timerInterval = setInterval(() => {
-                seconds++;
-                const timerEl = document.getElementById("loadingTimer");
-                if (timerEl) timerEl.innerText = `경과 시간: ${seconds}초 (대용량 재무 파트 병합 중...)`;
-            }, 1000);
-
-            globalFinancialData = await fetchAllFinancialParts();
-            extractUniqueCorps(globalFinancialData);
-
-            clearInterval(timerInterval);
-
-            // 로딩 화면 부드럽게 페이드아웃
-            const overlay = document.getElementById("loadingOverlay");
-            overlay.style.opacity = '0';
-            setTimeout(() => { overlay.style.display = 'none'; }, 500);
-        });
-
-        async function fetchAllFinancialParts() {
+            const startTime = Date.now();
             let combinedData = [];
             let partIndex = 1;
             let hasMore = true;
+            
+            // 총 파트 파일이 대략 60여 개라고 가정하고 로딩 바 진행률 시뮬레이션
+            const estimatedTotalParts = 60; 
 
             while (hasMore) {
                 const fileName = `corps_financials_part_${partIndex}.json`;
@@ -173,11 +161,38 @@
                     const partData = await response.json();
                     if (Array.isArray(partData)) combinedData = combinedData.concat(partData);
                     else if (typeof partData === 'object' && partData !== null) combinedData.push(partData);
+                    
+                    // 퍼센트 계산
+                    const progressPercent = Math.min(Math.floor((partIndex / estimatedTotalParts) * 100), 95);
+                    document.getElementById("progressBar").style.width = progressPercent + "%";
+                    
+                    // 경과 시간 및 남은 예상 시간 계산
+                    const elapsedSec = (Date.now() - startTime) / 1000;
+                    const estimatedTotalTime = elapsedSec / (partIndex / estimatedTotalParts);
+                    const remainingSec = Math.max(Math.ceil(estimatedTotalTime - elapsedSec), 1);
+                    
+                    document.getElementById("loadingSubText").innerText = 
+                        `데이터 파일 로딩 중 (${partIndex}번째 파트) · 경과: ${Math.floor(elapsedSec)}초 · 약 ${remainingSec}초 남음`;
+
                     partIndex++;
-                } catch (error) { hasMore = false; }
+                } catch (error) {
+                    hasMore = false;
+                }
             }
-            return combinedData;
-        }
+
+            document.getElementById("progressBar").style.width = "100%";
+            document.getElementById("loadingSubText").innerText = "데이터 인덱싱 및 분석 엔진 초기화 완료!";
+            
+            globalFinancialData = combinedData;
+            extractUniqueCorps(globalFinancialData);
+
+            // 로딩 모달 페이드아웃
+            setTimeout(() => {
+                const overlay = document.getElementById("loadingOverlay");
+                overlay.style.opacity = '0';
+                setTimeout(() => { overlay.style.display = 'none'; }, 500);
+            }, 400);
+        });
 
         function extractUniqueCorps(data) {
             const corpSet = new Set();
@@ -188,7 +203,6 @@
             uniqueCorps = Array.from(corpSet).sort();
         }
 
-        // 2. 검색 자동완성
         function onSearchInput(val) {
             const listDiv = document.getElementById("autocompleteList");
             listDiv.innerHTML = "";
@@ -214,22 +228,17 @@
             }
         });
 
-        // 3. 탭 추가 및 열기 관리
         function addAndOpenTab(corpName) {
-            if (!openedTabs.includes(corpName)) {
-                openedTabs.push(corpName);
-            }
+            if (!openedTabs.includes(corpName)) openedTabs.push(corpName);
             activeTab = corpName;
             renderTabs();
             selectAndRenderCorp(corpName);
         }
 
         function closeTab(e, corpName) {
-            e.stopPropagation(); // 탭 선택 이벤트 전파 방지
+            e.stopPropagation();
             const index = openedTabs.indexOf(corpName);
-            if (index > -1) {
-                openedTabs.splice(index, 1);
-            }
+            if (index > -1) openedTabs.splice(index, 1);
 
             if (activeTab === corpName) {
                 if (openedTabs.length > 0) {
@@ -246,21 +255,15 @@
         function renderTabs() {
             const container = document.getElementById("tabsContainer");
             container.innerHTML = "";
-
             if (openedTabs.length === 0) {
                 container.innerHTML = `<span style="font-size:12px; color:#888; padding:5px;">열린 기업 탭이 없습니다. 검색창에서 기업을 추가해보세요.</span>`;
                 return;
             }
-
             openedTabs.forEach(corp => {
                 const tab = document.createElement("div");
                 tab.className = `tab-item ${corp === activeTab ? 'active' : ''}`;
                 tab.innerHTML = `<span>${corp}</span> <span class="tab-close" onclick="closeTab(event, '${corp}')">&times;</span>`;
-                tab.onclick = () => {
-                    activeTab = corp;
-                    renderTabs();
-                    selectAndRenderCorp(corp);
-                };
+                tab.onclick = () => { activeTab = corp; renderTabs(); selectAndRenderCorp(corp); };
                 container.appendChild(tab);
             });
         }
@@ -272,9 +275,7 @@
             document.getElementById("cardOp").innerText = "-";
             document.getElementById("cardOpMargin").innerText = "-";
             document.getElementById("cardRoe").innerText = "-";
-            Object.keys(chartInstances).forEach(id => {
-                if (chartInstances[id]) chartInstances[id].destroy();
-            });
+            Object.keys(chartInstances).forEach(id => { if (chartInstances[id]) chartInstances[id].destroy(); });
         }
 
         function formatAmount(val) {
@@ -284,7 +285,7 @@
             return num.toLocaleString();
         }
 
-        // 4. 계정 정규화 유연 추출 함수
+        // 2. 10개년 연도 누락 방지 및 유연한 추출 함수
         function getNormalizedMetricValue(accountMap, rows, year, targetType) {
             let value = null;
             for (let cleanKey in accountMap) {
@@ -304,7 +305,7 @@
             }
 
             if (value === null || value === undefined || value === "-") {
-                const matchedRow = rows.find(r => String(r.bsns_year || r.결산기준일 || "").startsWith(year));
+                const matchedRow = rows.find(r => String(r.bsns_year || r.결산기준일 || "").substring(0, 4) === year);
                 if (matchedRow) {
                     if (targetType === '매출액') value = matchedRow['매출액'] || matchedRow['수익'] || matchedRow['revenue'];
                     else if (targetType === '영업이익') value = matchedRow['영업이익'] || matchedRow['operating_income'];
@@ -317,17 +318,18 @@
             return value;
         }
 
-        // 5. 선택된 기업 렌더링
         function selectAndRenderCorp(selectedCorpName) {
             const tableHead = document.querySelector("#financialTable thead tr");
             const tableBody = document.getElementById("tableBody");
             document.getElementById("reportTitle").innerText = `[${selectedCorpName}] 10개년 재무제표 요약표`;
 
             const corpRows = globalFinancialData.filter(item => (item.corp_name || item.회사명) === selectedCorpName);
+            
+            // 데이터에 존재하는 모든 연도를 빠짐없이 수집하여 정렬
             const yearsSet = new Set();
             corpRows.forEach(item => {
-                const year = item.bsns_year || item.결산기준일;
-                if (year) yearsSet.add(String(year).substring(0, 4));
+                const yearVal = String(item.bsns_year || item.결산기준일 || "").trim();
+                if (yearVal.length >= 4) yearsSet.add(yearVal.substring(0, 4));
             });
             const sortedYears = Array.from(yearsSet).sort();
             if (sortedYears.length === 0) return;
@@ -379,7 +381,7 @@
             metrics.forEach(metric => {
                 html += `<tr><td class="left"><strong>${metric.label}</strong></td>`;
                 sortedYears.forEach(year => {
-                    const matched = rows.find(r => String(r.bsns_year || r.결산기준일).startsWith(year));
+                    const matched = rows.find(r => String(r.bsns_year || r.결산기준일 || "").startsWith(year));
                     let val = "-";
                     if (matched) {
                         for (let k of metric.keys) { if (matched[k] !== undefined) { val = matched[k]; break; } }
