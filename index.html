@@ -23,8 +23,8 @@
             
             <div class="flex items-center gap-2 w-full md:w-auto relative">
                 <div class="relative w-full md:w-96">
-                    <input type="text" id="corpSearchInput" placeholder="🔍 회사명 또는 종목코드 입력 (예: 삼성전자, 005930)" 
-                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 placeholder-slate-500" autocomplete="off">
+                    <input type="text" id="corpSearchInput" placeholder="⏳ 재무 데이터 로딩 중..." disabled
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 placeholder-slate-500 cursor-not-allowed opacity-60" autocomplete="off">
                     <div id="corpDropdown" class="absolute left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl max-h-72 overflow-y-auto hidden z-50 divide-y divide-slate-700/50"></div>
                 </div>
             </div>
@@ -36,9 +36,9 @@
         
         <!-- Initial Welcome State -->
         <div id="welcomeState" class="text-center py-24 space-y-4 bg-slate-900/50 border border-slate-800/80 rounded-3xl p-8 shadow-inner">
-            <div class="text-5xl">🏢</div>
-            <h2 class="text-2xl font-bold text-slate-200">분석할 국내 기업을 검색해 주세요</h2>
-            <p class="text-sm text-slate-400 max-w-md mx-auto">상단 검색창에 상장사 이름이나 종목코드를 입력하시면, 수집된 실제 10년치 재무제표와 분석 카드가 즉시 생성됩니다.</p>
+            <div class="text-5xl animate-bounce">⏳</div>
+            <h2 id="loadingStatusText" class="text-2xl font-bold text-slate-200">대규모 재무 데이터를 불러오는 중입니다...</h2>
+            <p class="text-sm text-slate-400 max-w-md mx-auto">잠시만 기다려 주세요. 데이터 로딩이 완료되면 검색창이 활성화됩니다.</p>
         </div>
 
         <!-- Dashboard Content Container -->
@@ -112,8 +112,9 @@
         const dropdown = document.getElementById('corpDropdown');
         const welcomeState = document.getElementById('welcomeState');
         const dashboardContent = document.getElementById('dashboardContent');
+        const loadingStatusText = document.getElementById('loadingStatusText');
 
-        // 페이지 로드 시 분할된 JSON 파일들을 순차적으로 불러와 객체 맵으로 재구성
+        // 페이지 로드 시 분할된 JSON 파일들을 순차적으로 불러와 안전하게 병합
         window.onload = async () => {
             try {
                 let allRecords = [];
@@ -126,8 +127,12 @@
                         if (!response.ok) break; 
                         
                         const partData = await response.json();
-                        allRecords = allRecords.concat(partData);
-                        console.log(`✅ ${partFilename} 로드 완료 (${partData.length}건)`);
+                        if (Array.isArray(partData)) {
+                            allRecords = allRecords.concat(partData);
+                        } else if (typeof partData === 'object') {
+                            // 객체 형태인 경우 배열로 변환하여 병합
+                            allRecords = allRecords.concat(Object.values(partData));
+                        }
                     } catch (e) {
                         break;
                     }
@@ -136,22 +141,24 @@
 
                 financialMap = {};
                 allRecords.forEach(item => {
+                    if (!item) return;
                     const corpName = item['회사명'] || item['corp_name'] || item['corpName'];
                     const corpCode = item['종목코드'] || item['stock_code'] || item['stockCode'] || '';
                     const year = item['사업연도'] || item['bsns_year'] || item['year'];
                     
                     if (!corpName) return;
 
-                    if (!financialMap[corpName]) {
-                        financialMap[corpName] = {
-                            code: corpCode,
+                    const cleanName = String(corpName).trim();
+                    if (!financialMap[cleanName]) {
+                        financialMap[cleanName] = {
+                            code: String(corpCode).trim(),
                             dartCode: item['고유번호'] || item['corp_code'] || '',
                             financials: {}
                         };
                     }
 
                     if (year) {
-                        financialMap[corpName].financials[year] = {
+                        financialMap[cleanName].financials[year] = {
                             revenue: parseFloat(item['매출액'] || item['revenue'] || 0),
                             op: parseFloat(item['영업이익'] || item['op'] || 0),
                             net: parseFloat(item['당기순이익'] || item['net'] || 0)
@@ -159,9 +166,22 @@
                     }
                 });
 
-                console.log(`🎉 모든 재무 데이터 통합 로드 성공: 총 ${Object.keys(financialMap).length}개 기업`);
+                const corpCount = Object.keys(financialMap).length;
+                console.log(`🎉 모든 재무 데이터 통합 로드 성공: 총 ${corpCount}개 기업`);
+
+                if (corpCount > 0) {
+                    searchInput.disabled = false;
+                    searchInput.placeholder = "🔍 회사명 또는 종목코드 입력 (예: 삼성전자, 005930)";
+                    searchInput.classList.remove('cursor-not-allowed', 'opacity-65');
+                    loadingStatusText.innerText = "분석할 국내 기업을 검색해 주세요";
+                    document.querySelector('#welcomeState p').innerText = "상단 검색창에 상장사 이름이나 종목코드를 입력하시면, 수집된 실제 10년치 재무제표와 분석 카드가 즉시 생성됩니다.";
+                } else {
+                    loadingStatusText.innerText = "⚠️ 로드된 재무 데이터가 없습니다.";
+                }
+
             } catch (err) {
                 console.error("❌ 데이터 로드 중 에러 발생:", err);
+                loadingStatusText.innerText = "❌ 데이터 로드 중 에러가 발생했습니다.";
             }
         };
 
@@ -176,17 +196,16 @@
             }
 
             const matchedCorps = Object.keys(financialMap).filter(corpName => {
-                if (!corpName) return false;
                 const info = financialMap[corpName];
-                const nameStr = String(corpName).toLowerCase();
-                const codeStr = info && info.code != null ? String(info.code).toLowerCase() : '';
+                const nameStr = corpName.toLowerCase();
+                const codeStr = info && info.code ? String(info.code).toLowerCase() : '';
                 return nameStr.includes(query) || codeStr.includes(query);
             }).slice(0, 20);
             
             if (matchedCorps.length > 0) {
                 dropdown.classList.remove('hidden');
                 matchedCorps.forEach(corpName => {
-                    const info = financialMap[corpName] || {};
+                    const info = financialMap[corpName];
                     const div = document.createElement('div');
                     div.className = 'px-4 py-3 text-sm hover:bg-slate-700/80 cursor-pointer flex justify-between items-center transition';
                     div.innerHTML = `
@@ -217,9 +236,9 @@
             dashboardContent.classList.remove('hidden');
 
             document.getElementById('selectedCorpName').innerText = corpName;
-            document.getElementById('selectedCorpCode').innerText = `종목코드: ${info.code} | DART 고유번호: ${info.dartCode}`;
+            document.getElementById('selectedCorpCode').innerText = `종목코드: ${info.code || '-'} | DART 고유번호: ${info.dartCode || '-'}`;
 
-            const rawFin = info.financials; 
+            const rawFin = info.financials || {}; 
             const sortedYears = Object.keys(rawFin).sort();
 
             let years = [], revenue = [], op = [], net = [], opm = [];
