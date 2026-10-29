@@ -2,73 +2,91 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>한국 상장사 10년 재무제표 종합 분석 대시보드</title>
+    <title>상장사 10년 재무제표 종합 분석 대시보드</title>
+    <!-- Chart.js 그래프 라이브러리 연동 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root { --primary: #1b365d; --secondary: #4b6b94; --bg: #f4f6f9; --card-bg: #ffffff; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: var(--bg); color: #333; }
-        header { margin-bottom: 25px; }
-        h1 { color: var(--primary); margin-bottom: 5px; }
+        header { margin-bottom: 20px; }
+        h1 { color: var(--primary); margin-bottom: 5px; font-size: 24px; }
         .subtitle { color: #666; font-size: 14px; }
         
-        /* 컨트롤 패널 */
-        .control-panel { background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
-        .search-box { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 250px; }
-        label { font-weight: bold; font-size: 13px; color: #444; }
-        select, input { padding: 10px; font-size: 14px; border: 1px solid #ccd1d9; border-radius: 6px; outline: none; }
-        select:focus, input:focus { border-color: var(--primary); }
-        .status { font-weight: 600; color: #e67e22; font-size: 14px; margin-top: 10px; }
+        /* 검색 컨트롤 패널 */
+        .control-panel { background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; position: relative; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .search-container { position: relative; flex: 1; min-width: 300px; }
+        label { font-weight: bold; font-size: 13px; color: #444; display: block; margin-bottom: 6px; }
+        input[type="text"] { width: 100%; padding: 10px 12px; font-size: 15px; border: 1px solid #ccd1d9; border-radius: 6px; box-sizing: border-box; outline: none; }
+        input[type="text"]:focus { border-color: var(--primary); }
+        
+        /* 자동완성 드롭다운 박스 */
+        .autocomplete-items { position: absolute; border: 1px solid #ccd1d9; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; background-color: #fff; border-radius: 0 0 6px 6px; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .autocomplete-item { padding: 10px 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid #f1f1f1; }
+        .autocomplete-item:hover { background-color: #f1f4f8; color: var(--primary); font-weight: bold; }
+        
+        .status { font-weight: 600; color: #e67e22; font-size: 14px; }
 
-        /* 대시보드 컨텐츠 영역 */
+        /* 대시보드 카드 레이아웃 */
         .dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
         .card { background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .card h3 { margin-top: 0; color: var(--primary); border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
+        .card h3 { margin-top: 0; color: var(--primary); border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; font-size: 18px; }
+
+        /* 차트 영역 */
+        .chart-container { position: relative; height: 320px; width: 100%; margin-top: 15px; }
 
         /* 테이블 스타일 */
-        .table-responsive { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; white-space: nowrap; }
+        .table-responsive { overflow-x: auto; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; white-space: nowrap; }
         th, td { border: 1px solid #e1e4e8; padding: 10px 12px; text-align: right; font-size: 13px; }
         th { background-color: var(--primary); color: white; text-align: center; }
         td.left { text-align: left; }
         tr:nth-child(even) { background-color: #fafbfc; }
         tr:hover { background-color: #f1f4f8; }
         
-        .no-data { text-align: center; padding: 40px; color: #888; font-size: 15px; }
+        .no-data { text-align: center; padding: 30px; color: #888; font-size: 15px; }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>반도체 및 주요 상장사 10년 재무제표 분석</h1>
-        <div class="subtitle">OpenDART 데이터를 기반으로 한 다개년 시계열 재무 구조 분석 대시보드</div>
+        <h1>상장사 10년 재무제표 분석 대시보드</h1>
+        <div class="subtitle">기업명을 검색하여 10개년 시계열 재무 구조와 핵심 지표를 확인하세요.</div>
     </header>
 
-    <!-- 검색 및 컨트롤 패널 -->
+    <!-- 검색 컨트롤 패널 -->
     <div class="control-panel">
-        <div class="search-box">
-            <label for="corpSelect">기업 선택 (검색 및 드롭다운)</label>
-            <select id="corpSelect" onchange="onCorpSelected()">
-                <option value="">-- 기업을 선택하세요 (전체 파트 자동 연동) --</option>
-            </select>
+        <div class="search-container">
+            <label for="corpSearchInput">기업 검색 (예: '삼' 입력 시 관련 기업 추천)</label>
+            <input type="text" id="corpSearchInput" placeholder="기업명을 입력하세요 (예: 삼성전자, SK하이닉스...)" oninput="onSearchInput(this.value)" autocomplete="off">
+            <div id="autocompleteList" class="autocomplete-items"></div>
         </div>
         <div>
-            <div id="loadingStatus" class="status">데이터 파트 로딩 대기 중...</div>
+            <div id="loadingStatus" class="status">데이터 파트 로딩 중...</div>
         </div>
     </div>
 
-    <!-- 상세 분석 리포트 영역 -->
+    <!-- 상세 분석 및 차트 영역 -->
     <div class="dashboard-grid">
+        <!-- 그래프 차트 카드 -->
         <div class="card">
-            <h3 id="reportTitle">선택된 기업 10개년 재무 요약표</h3>
+            <h3 id="chartCardTitle">10개년 주요 재무 트렌드 시각화 (매출액 / 영업이익)</h3>
+            <div class="chart-container">
+                <canvas id="financialChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 10개년 재무 요약표 카드 -->
+        <div class="card">
+            <h3 id="reportTitle">10개년 재무제표 요약표</h3>
             <div class="table-responsive">
                 <table id="financialTable">
                     <thead>
                         <tr>
                             <th class="left">계정 항목명</th>
-                            <!-- 10개년 연도가 동적으로 들어갈 자리 -->
                         </tr>
                     </thead>
                     <tbody id="tableBody">
-                        <tr><td colspan="11" class="no-data">기업을 선택하시면 10개년 재무제표 시계열 분석표가 표시됩니다.</td></tr>
+                        <tr><td colspan="11" class="no-data">위 검색창에서 기업을 검색하고 선택해주세요.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -77,8 +95,10 @@
 
     <script>
         let globalFinancialData = [];
+        let uniqueCorps = [];
+        let myChart = null;
 
-        // 1. corps_financials_part_1.json 부터 끝까지 순차적으로 비동기 병합 로드
+        // 1. corps_financials_part_1.json 부터 끝까지 순차 비동기 로드
         async function fetchAllFinancialParts() {
             const statusDiv = document.getElementById("loadingStatus");
             let combinedData = [];
@@ -102,70 +122,75 @@
                     } else if (typeof partData === 'object' && partData !== null) {
                         combinedData.push(partData);
                     }
-
                     partIndex++;
                 } catch (error) {
                     hasMore = false;
                 }
             }
 
-            statusDiv.innerText = `총 ${partIndex - 1}개 파트 파일 로드 완료 (총 데이터 행: ${combinedData.length.toLocaleString()}개)`;
+            statusDiv.innerText = `로드 완료 (총 ${combinedData.length.toLocaleString()}개 행)`;
             return combinedData;
         }
 
-        // 2. 드롭다운 목록 초기화 (기업명 중복 제거 후 가나다순 정렬)
-        function initCorpDropdown(data) {
-            const selectElem = document.getElementById("corpSelect");
-            const corpMap = new Map(); // key: corp_code 또는 name, value: displayName
-
+        // 2. 고유 기업 목록 추출
+        function extractUniqueCorps(data) {
+            const corpSet = new Set();
             data.forEach(item => {
                 const name = item.corp_name || item.회사명;
-                const code = item.corp_code || item.stock_code || name;
-                if (name) {
-                    corpMap.set(code, name);
-                }
+                if (name) corpSet.add(name);
             });
+            uniqueCorps = Array.from(corpSet).sort();
+        }
 
-            // 이름 기준으로 정렬
-            const sortedCorps = Array.from(corpMap.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+        // 3. 검색어 입력 시 자동완성 리스트 실시간 표출 ("삼" 입력 시 연관 기업 팝업)
+        function onSearchInput(val) {
+            const listDiv = document.getElementById("autocompleteList");
+            listDiv.innerHTML = "";
+            if (!val.trim()) return;
 
-            sortedCorps.forEach(([code, name]) => {
-                const option = document.createElement("option");
-                option.value = name; // 여기서는 기업명 기준으로 필터링
-                option.textContent = name;
-                selectElem.appendChild(option);
+            const matched = uniqueCorps.filter(name => name.includes(val)).slice(0, 15); // 최대 15개 추천
+
+            matched.forEach(corpName => {
+                const itemDiv = document.createElement("div");
+                itemDiv.classList.add("autocomplete-item");
+                itemDiv.textContent = corpName;
+                itemDiv.onclick = function() {
+                    document.getElementById("corpSearchInput").value = corpName;
+                    listDiv.innerHTML = "";
+                    selectAndRenderCorp(corpName);
+                };
+                listDiv.appendChild(itemDiv);
             });
         }
 
-        // 3. 숫자 천단위 콤마 포맷팅
+        // 바깥 영역 클릭 시 자동완성 닫기
+        document.addEventListener("click", function(e) {
+            if (!e.target.closest('.search-container')) {
+                document.getElementById("autocompleteList").innerHTML = "";
+            }
+        });
+
+        // 4. 금액 포맷팅 (콤마)
         function formatAmount(val) {
             if (val === null || val === undefined || val === "" || val === "-") return "-";
             const num = Number(String(val).replace(/,/g, ''));
             if (isNaN(num)) return val;
-            // 억 단위 혹은 원 단위에 맞춰 그대로 출력 (콤마 적용)
             return num.toLocaleString();
         }
 
-        // 4. 특정 기업 선택 시 10개년 시계열 재무 분석표 렌더링
-        function onCorpSelected() {
-            const selectedCorpName = document.getElementById("corpSelect").value;
+        // 5. 선택된 기업의 10개년 재무 분석표 및 차트 렌더링
+        function selectAndRenderCorp(selectedCorpName) {
             const tableHead = document.querySelector("#financialTable thead tr");
             const tableBody = document.getElementById("tableBody");
             const reportTitle = document.getElementById("reportTitle");
-
-            if (!selectedCorpName) {
-                reportTitle.innerText = "선택된 기업 10개년 재무 요약표";
-                tableHead.innerHTML = `<th class="left">계정 항목명</th>`;
-                tableBody.innerHTML = `<tr><td colspan="2" class="no-data">기업을 선택하시면 10개년 재무제표 시계열 분석표가 표시됩니다.</td></tr>`;
-                return;
-            }
+            const chartCardTitle = document.getElementById("chartCardTitle");
 
             reportTitle.innerText = `[${selectedCorpName}] 10개년 주요 재무제표 시계열 분석`;
+            chartCardTitle.innerText = `[${selectedCorpName}] 10개년 매출액 및 영업이익 트렌드`;
 
-            // 해당 기업 데이터 필터링
             const corpRows = globalFinancialData.filter(item => (item.corp_name || item.회사명) === selectedCorpName);
 
-            // 존재하는 연도 추출 및 정렬 (오름차순)
+            // 연도 추출 및 정렬
             const yearsSet = new Set();
             corpRows.forEach(item => {
                 const year = item.bsns_year || item.결산기준일;
@@ -178,32 +203,19 @@
                 return;
             }
 
-            // 테이블 헤더 구성 (계정명 + 연도들)
+            // 테이블 헤더 구성
             let headerHTML = `<th class="left" style="min-width: 200px;">주요 재무항목</th>`;
-            sortedYears.forEach(year => {
-                headerHTML += `<th>${year}년</th>`;
-            });
+            sortedYears.forEach(year => { headerHTML += `<th>${year}년</th>`; });
             tableHead.innerHTML = headerHTML;
 
-            // 주요 다루는 재무 계정 정의 (자산총계, 부채총계, 자본총계, 매출액, 영업이익 등)
-            // OpenDART 데이터의 account_nm 이나 필드명 대응
-            const targetAccounts = [
-                "자산총계", "부채총계", "자본총계", "매출액", "영업이익", "당기순이익",
-                "유동자산", "비유동자산", "유동부채", "비유동부채"
-            ];
-
-            // 데이터 구조 매핑 (계정별 -> 연도별 금액 맵 생성)
+            // 계정 데이터 매핑
             const accountDataMap = {};
-
             corpRows.forEach(item => {
                 const year = String(item.bsns_year || item.결산기준일 || "").substring(0, 4);
-                // 키가 account_nm 형태이거나 직접 필드명인 경우 모두 대응
                 const accName = item.account_nm || item.항목명 || item.account_name;
-                // 당기 금액 (thstrm_amount 또는 당기 필드)
                 const amount = item.thstrm_amount || item.당기금액 || item.당기;
 
                 if (accName && year) {
-                    // 표준화 작업 (공백 제거)
                     const cleanName = accName.replace(/\s+/g, '');
                     if (!accountDataMap[cleanName]) {
                         accountDataMap[cleanName] = { originalName: accName, values: {} };
@@ -214,31 +226,27 @@
 
             // 테이블 바디 구성
             let bodyHTML = "";
-            
-            // 등록된 계정 순서대로 출력, 없으면 데이터에 있는 항목들 출력
             const displayedKeys = Object.keys(accountDataMap);
 
             if (displayedKeys.length === 0) {
-                // 만약 계정별 구조가 아니라 단일 행 객체 구조라면 (예: row 하나에 자산, 부채가 다 들어있는 경우)
                 bodyHTML = renderFlatRowStructure(corpRows, sortedYears);
             } else {
                 displayedKeys.forEach(key => {
                     const rowInfo = accountDataMap[key];
                     bodyHTML += `<tr>`;
                     bodyHTML += `<td class="left"><strong>${rowInfo.originalName}</strong></td>`;
-                    
                     sortedYears.forEach(year => {
-                        const val = rowInfo.values[year];
-                        bodyHTML += `<td>${formatAmount(val)}</td>`;
+                        bodyHTML += `<td>${formatAmount(rowInfo.values[year])}</td>`;
                     });
                     bodyHTML += `</tr>`;
                 });
             }
-
             tableBody.innerHTML = bodyHTML;
+
+            // 차트 렌더링 데이터 준비 (매출액, 영업이익 추출)
+            updateChart(sortedYears, accountDataMap, corpRows);
         }
 
-        // 플랫 구조(한 행에 여러 필드가 있는 경우) 보조 렌더링 함수
         function renderFlatRowStructure(rows, sortedYears) {
             let html = "";
             const metrics = [
@@ -257,10 +265,7 @@
                     let val = "-";
                     if (matched) {
                         for (let k of metric.keys) {
-                            if (matched[k] !== undefined) {
-                                val = matched[k];
-                                break;
-                            }
+                            if (matched[k] !== undefined) { val = matched[k]; break; }
                         }
                     }
                     html += `<td>${formatAmount(val)}</td>`;
@@ -270,10 +275,86 @@
             return html;
         }
 
-        // 페이지 로드 시 전체 파트 데이터 비동기 병합 실행
+        // Chart.js 그래프 업데이트 함수
+        function updateChart(years, accountMap, rows) {
+            let revenueData = [];
+            let opIncomeData = [];
+
+            years.forEach(year => {
+                let rev = null;
+                let op = null;
+                
+                // accountMap에서 찾기 시도
+                for (let k in accountMap) {
+                    if (k.includes("매출액") || k.includes("수익")) {
+                        rev = accountMap[k].values[year];
+                    }
+                    if (k.includes("영업이익")) {
+                        op = accountMap[k].values[year];
+                    }
+                }
+
+                // 플랫 구조에서 찾기 시도
+                if (rev === null || op === null) {
+                    const matched = rows.find(r => String(r.bsns_year || r.결산기준일).startsWith(year));
+                    if (matched) {
+                        rev = rev || matched["매출액"] || matched["revenue"];
+                        op = op || matched["영업이익"] || matched["operating_income"];
+                    }
+                }
+
+                revenueData.push(rev ? Number(String(rev).replace(/,/g, '')) / 100000000 : null); // 억 단위 변환 예시
+                opIncomeData.push(op ? Number(String(op).replace(/,/g, '')) / 100000000 : null);
+            });
+
+            const ctx = document.getElementById('financialChart').getContext('2d');
+            if (myChart) myChart.destroy();
+
+            myChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: years.map(y => y + '년'),
+                    datasets: [
+                        {
+                            label: '매출액 (억원)',
+                            data: revenueData,
+                            backgroundColor: 'rgba(27, 54, 93, 0.7)',
+                            borderColor: 'rgba(27, 54, 93, 1)',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: '영업이익 (억원)',
+                            data: opIncomeData,
+                            type: 'line',
+                            borderColor: 'rgba(230, 126, 34, 1)',
+                            backgroundColor: 'rgba(230, 126, 34, 0.2)',
+                            borderWidth: 3,
+                            fill: false,
+                            yAxisID: 'y'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f0f2f5' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 페이지 로드 시 초기화
         window.addEventListener("DOMContentLoaded", async () => {
             globalFinancialData = await fetchAllFinancialParts();
-            initCorpDropdown(globalFinancialData);
+            extractUniqueCorps(globalFinancialData);
         });
     </script>
 </body>
