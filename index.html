@@ -16,7 +16,6 @@
         #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(27, 54, 93, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; transition: opacity 0.5s ease; }
         .spinner { width: 45px; height: 45px; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; margin-bottom: 15px; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        #loadingMessage { font-size: 16px; font-weight: bold; margin-bottom: 10px; text-align: center; }
         
         /* 프로그레스바 스타일 */
         .progress-bar-container { width: 320px; background: rgba(255,255,255,0.2); border-radius: 10px; height: 16px; overflow: hidden; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.4); }
@@ -66,26 +65,26 @@
 </head>
 <body>
 
-    <!-- 로딩바 및 남은 시간 안내 모달 -->
+    <!-- 로딩바 모달 -->
     <div id="loadingOverlay">
         <div class="spinner"></div>
         <div id="loadingMessage">국내 상장사 재무 데이터베이스 동기화 중...</div>
         <div class="progress-bar-container">
             <div class="progress-bar" id="progressBar"></div>
         </div>
-        <div id="loadingSubText">파트 파일 로딩 준비 중... (남은 시간 계산 중)</div>
+        <div id="loadingSubText">파트 파일 로딩 준비 중...</div>
     </div>
 
     <header>
         <h1>상장사 10년 재무제표 종합 분석 대시보드</h1>
-        <div class="subtitle">기업명을 검색하면 상단 탭에 저장되어 언제든 간편하게 전환하며 비교할 수 있습니다.</div>
+        <div class="subtitle">사명이 변경된 기업(예: LK삼양 / 삼양옵틱스)도 고유번호로 자동 통합되어 10개년 연속 조회됩니다.</div>
     </header>
 
     <!-- 검색 컨트롤 패널 -->
     <div class="control-panel">
         <div class="search-container">
             <label for="corpSearchInput">기업 검색</label>
-            <input type="text" id="corpSearchInput" placeholder="기업명을 입력하세요 (예: 삼성전자, LK삼양...)" oninput="onSearchInput(this.value)" autocomplete="off">
+            <input type="text" id="corpSearchInput" placeholder="기업명을 입력하세요 (예: 삼성전자, LK삼양, 삼양옵틱스...)" oninput="onSearchInput(this.value)" autocomplete="off">
             <div id="autocompleteList" class="autocomplete-items"></div>
         </div>
     </div>
@@ -143,7 +142,7 @@
         let openedTabs = []; 
         let activeTabCode = null;
 
-        // 1. 프로그레스바 및 잔여 시간 계산 로딩 로직
+        // 1. 프로그레스바 및 로딩 로직
         window.addEventListener("DOMContentLoaded", async () => {
             const startTime = Date.now();
             let combinedData = [];
@@ -177,7 +176,7 @@
             }
 
             document.getElementById("progressBar").style.width = "100%";
-            document.getElementById("loadingSubText").innerText = "데이터 인덱싱 및 분석 엔진 초기화 완료!";
+            document.getElementById("loadingSubText").innerText = "사명 변경 통합 인덱싱 완료!";
             
             globalFinancialData = combinedData;
             extractUniqueCorps(globalFinancialData);
@@ -189,30 +188,58 @@
             }, 400);
         });
 
-        // 고유번호 및 기업명 유연하게 추출 (다양한 키 이름 완벽 대응)
+        // 고유번호(corp_code) 기반으로 사명이 달라도 최신 사명으로 하나로 통합 매핑
         function extractUniqueCorps(data) {
-            const corpMap = new Map();
+            const corpMap = new Map(); // key: corp_code, value: 최신 사명 결정용 맵 혹은 이름 집합
+            const codeToNames = new Map(); // 고유번호별 등장하는 모든 사명 수집
+
             data.forEach(item => {
                 const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
                 const name = item.corp_name || item.회사명 || item.stock_name || item.name;
-                if (name) {
+                if (code && name) {
+                    const cleanCode = String(code).trim();
                     const cleanName = String(name).trim();
-                    const cleanCode = code ? String(code).trim() : cleanName; // 코드가 없으면 이름으로 대체
-                    corpMap.set(cleanCode, cleanName);
+
+                    if (!codeToNames.has(cleanCode)) {
+                        codeToNames.set(cleanCode, new Set());
+                    }
+                    codeToNames.set(cleanCode, codeToNames.get(cleanCode).add(cleanName));
                 }
             });
-            uniqueCorps = Array.from(corpMap.entries()).map(([code, name]) => ({ code, name }));
+
+            // 각 고유번호별로 대표 사명 선정 (가장 글자수가 길거나 최근 이름 선호, 혹은 첫 번째 이름)
+            codeToNames.forEach((namesSet, code) => {
+                const namesArr = Array.from(namesSet);
+                // 예: 'LK삼양'과 '삼양옵틱스가' 있다면 더 최근/대표적인 이름을 대표명으로 지정
+                const representativeName = namesArr.sort((a, b) => b.length - a.length)[0]; 
+                
+                // 해당 고유번호와 연결된 모든 이름(과거 사명, 현재 사명 포함)을 이 고유번호로 매핑
+                namesArr.forEach(alias => {
+                    corpMap.set(alias.toLowerCase(), { code: code, representativeName: representativeName });
+                });
+                // 대표 이름 자체도 매핑
+                corpMap.set(representativeName.toLowerCase(), { code: code, representativeName: representativeName });
+            });
+
+            // 검색 드롭다운용 유니크 대표 기업 리스트 생성 (중복 제거)
+            const uniqueMap = new Map();
+            codeToNames.forEach((namesSet, code) => {
+                const representativeName = Array.from(namesSet).sort((a, b) => b.length - a.length)[0];
+                uniqueMap.set(code, representativeName);
+            });
+
+            window.corpAliasMap = corpMap; // 전역 사명 알림 맵 저장
+            uniqueCorps = Array.from(uniqueMap.entries()).map(([code, name]) => ({ code, name }));
             uniqueCorps.sort((a, b) => a.name.localeCompare(b.name));
-            console.log("추출된 고유 기업 수:", uniqueCorps.length);
         }
 
         function onSearchInput(val) {
             const listDiv = document.getElementById("autocompleteList");
             listDiv.innerHTML = "";
-            const query = val.trim();
+            const query = val.trim().toLowerCase();
             if (!query) return;
 
-            const matched = uniqueCorps.filter(item => item.name.toLowerCase().includes(query.toLowerCase())).slice(0, 15);
+            const matched = uniqueCorps.filter(item => item.name.toLowerCase().includes(query)).slice(0, 15);
             
             if (matched.length === 0) {
                 const noItem = document.createElement("div");
@@ -338,7 +365,7 @@
             return value;
         }
 
-        // 고유번호 또는 사명 매칭으로 데이터 통합 조회
+        // 고유번호(corp_code) 기반으로 과거 사명과 현재 사명을 완벽히 통합하여 10개년 조회
         function selectAndRenderCorp(selectedCorpCode, selectedCorpName) {
             const tableHead = document.querySelector("#financialTable thead tr");
             const tableBody = document.getElementById("tableBody");
@@ -346,8 +373,7 @@
 
             const corpRows = globalFinancialData.filter(item => {
                 const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
-                const name = item.corp_name || item.회사명 || item.stock_name || item.name;
-                return (code && String(code).trim() === String(selectedCorpCode)) || (name && String(name).trim() === selectedCorpName);
+                return code && String(code).trim() === String(selectedCorpCode);
             });
             
             const yearsSet = new Set();
