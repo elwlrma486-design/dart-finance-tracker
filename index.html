@@ -12,12 +12,11 @@
         h1 { color: var(--primary); margin-bottom: 5px; font-size: 22px; }
         .subtitle { color: #666; font-size: 13px; }
 
-        /* 로딩바 모달 오버레이 */
+        /* 로딩바 모달 */
         #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(27, 54, 93, 0.95); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; transition: opacity 0.5s ease; }
         .spinner { width: 45px; height: 45px; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; margin-bottom: 15px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         
-        /* 프로그레스바 스타일 */
         .progress-bar-container { width: 320px; background: rgba(255,255,255,0.2); border-radius: 10px; height: 16px; overflow: hidden; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.4); }
         .progress-bar { width: 0%; height: 100%; background: #2ecc71; transition: width 0.3s ease; }
         #loadingSubText { font-size: 13px; color: #f1c40f; }
@@ -30,7 +29,7 @@
         input[type="text"]:focus { border-color: var(--primary); }
         
         /* 자동완성 드롭다운 */
-        .autocomplete-items { position: absolute; border: 1px solid #ccd1d9; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; background-color: #fff; border-radius: 0 0 6px 6px; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .autocomplete-items { position: absolute; border: 1px solid #ccd1d9; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; background-color: #fff; border-radius: 0 0 6px 6px; max-height: 220px; overflow-y: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.12); }
         .autocomplete-item { padding: 10px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f1f1f1; color: #333; }
         .autocomplete-item:hover { background-color: #f1f4f8; color: var(--primary); font-weight: bold; }
 
@@ -137,12 +136,13 @@
 
     <script>
         let globalFinancialData = [];
-        let uniqueCorps = []; 
+        let uniqueCorps = []; // 검색 리스트용 [{ code, name, aliases: [] }]
+        let corpCodeToAliases = new Map(); // 고유번호 -> 매핑된 모든 사명 Set
         let chartInstances = {};
         let openedTabs = []; 
         let activeTabCode = null;
 
-        // 1. 프로그레스바 및 로딩 로직
+        // 1. 파일 로드 및 인덱싱
         window.addEventListener("DOMContentLoaded", async () => {
             const startTime = Date.now();
             let combinedData = [];
@@ -167,7 +167,7 @@
                     const remainingSec = Math.max(Math.ceil(estimatedTotalTime - elapsedSec), 1);
                     
                     document.getElementById("loadingSubText").innerText = 
-                        `데이터 파일 로딩 중 (${partIndex}번째 파트) · 경과: ${Math.floor(elapsedSec)}초 · 약 ${remainingSec}초 남음`;
+                        `데이터 로딩 중 (${partIndex}번째 파트) · 경과: ${Math.floor(elapsedSec)}초 · 약 ${remainingSec}초 남음`;
 
                     partIndex++;
                 } catch (error) {
@@ -176,7 +176,7 @@
             }
 
             document.getElementById("progressBar").style.width = "100%";
-            document.getElementById("loadingSubText").innerText = "사명 변경 통합 인덱싱 완료!";
+            document.getElementById("loadingSubText").innerText = "기업명 및 사명 통합 인덱싱 완료!";
             
             globalFinancialData = combinedData;
             extractUniqueCorps(globalFinancialData);
@@ -188,59 +188,76 @@
             }, 400);
         });
 
-        // 고유번호(corp_code) 기반으로 사명이 달라도 최신 사명으로 하나로 통합 매핑
+        // 2. 검색을 보장하는 견고한 기업 인덱싱 로직
         function extractUniqueCorps(data) {
-            const corpMap = new Map(); // key: corp_code, value: 최신 사명 결정용 맵 혹은 이름 집합
-            const codeToNames = new Map(); // 고유번호별 등장하는 모든 사명 수집
+            const nameToCodeMap = new Map();
+            const codeToNamesMap = new Map();
+            const allNamesSet = new Set();
 
             data.forEach(item => {
-                const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
                 const name = item.corp_name || item.회사명 || item.stock_name || item.name;
-                if (code && name) {
-                    const cleanCode = String(code).trim();
+                const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
+                
+                if (name) {
                     const cleanName = String(name).trim();
+                    if (!cleanName) return;
+                    allNamesSet.add(cleanName);
 
-                    if (!codeToNames.has(cleanCode)) {
-                        codeToNames.set(cleanCode, new Set());
+                    if (code) {
+                        const cleanCode = String(code).trim();
+                        nameToCodeMap.set(cleanName, cleanCode);
+                        if (!codeToNamesMap.has(cleanCode)) {
+                            codeToNamesMap.set(cleanCode, new Set());
+                        }
+                        codeToNamesMap.get(cleanCode).add(cleanName);
                     }
-                    codeToNames.set(cleanCode, codeToNames.get(cleanCode).add(cleanName));
                 }
             });
 
-            // 각 고유번호별로 대표 사명 선정 (가장 글자수가 길거나 최근 이름 선호, 혹은 첫 번째 이름)
-            codeToNames.forEach((namesSet, code) => {
-                const namesArr = Array.from(namesSet);
-                // 예: 'LK삼양'과 '삼양옵틱스가' 있다면 더 최근/대표적인 이름을 대표명으로 지정
-                const representativeName = namesArr.sort((a, b) => b.length - a.length)[0]; 
-                
-                // 해당 고유번호와 연결된 모든 이름(과거 사명, 현재 사명 포함)을 이 고유번호로 매핑
-                namesArr.forEach(alias => {
-                    corpMap.set(alias.toLowerCase(), { code: code, representativeName: representativeName });
+            corpCodeToAliases = codeToNamesMap;
+
+            // 검색용 항목 생성
+            const list = [];
+            const processedNames = new Set();
+
+            allNamesSet.forEach(name => {
+                if (processedNames.has(name)) return;
+
+                const code = nameToCodeMap.get(name) || name; // 고유번호가 없으면 사명 자체를 ID로 사용
+                let aliases = [name];
+
+                if (nameToCodeMap.has(name) && codeToNamesMap.has(code)) {
+                    aliases = Array.from(codeToNamesMap.get(code));
+                    aliases.forEach(a => processedNames.add(a));
+                } else {
+                    processedNames.add(name);
+                }
+
+                // 가장 최근 혹은 짧은/기본 사명을 대표 표기명으로 지정
+                const representativeName = aliases[0]; 
+
+                list.push({
+                    code: code,
+                    name: representativeName,
+                    aliases: aliases
                 });
-                // 대표 이름 자체도 매핑
-                corpMap.set(representativeName.toLowerCase(), { code: code, representativeName: representativeName });
             });
 
-            // 검색 드롭다운용 유니크 대표 기업 리스트 생성 (중복 제거)
-            const uniqueMap = new Map();
-            codeToNames.forEach((namesSet, code) => {
-                const representativeName = Array.from(namesSet).sort((a, b) => b.length - a.length)[0];
-                uniqueMap.set(code, representativeName);
-            });
-
-            window.corpAliasMap = corpMap; // 전역 사명 알림 맵 저장
-            uniqueCorps = Array.from(uniqueMap.entries()).map(([code, name]) => ({ code, name }));
-            uniqueCorps.sort((a, b) => a.name.localeCompare(b.name));
+            uniqueCorps = list.sort((a, b) => a.name.localeCompare(b.name));
         }
 
+        // 3. 실시간 자동완성 검색
         function onSearchInput(val) {
             const listDiv = document.getElementById("autocompleteList");
             listDiv.innerHTML = "";
             const query = val.trim().toLowerCase();
             if (!query) return;
 
-            const matched = uniqueCorps.filter(item => item.name.toLowerCase().includes(query)).slice(0, 15);
-            
+            // 사명 또는 연관 사명(구 사명 포함) 중 매칭되는 항목 찾기
+            const matched = uniqueCorps.filter(item => {
+                return item.aliases.some(alias => alias.toLowerCase().includes(query));
+            }).slice(0, 15);
+
             if (matched.length === 0) {
                 const noItem = document.createElement("div");
                 noItem.classList.add("autocomplete-item");
@@ -253,11 +270,18 @@
             matched.forEach(corp => {
                 const itemDiv = document.createElement("div");
                 itemDiv.classList.add("autocomplete-item");
-                itemDiv.textContent = corp.name;
+                // 과거 사명 검색 시 괄호로 별칭 안내 표시
+                const matchedAlias = corp.aliases.find(a => a.toLowerCase().includes(query));
+                if (matchedAlias && matchedAlias !== corp.name) {
+                    itemDiv.textContent = `${corp.name} (${matchedAlias})`;
+                } else {
+                    itemDiv.textContent = corp.name;
+                }
+                
                 itemDiv.onclick = function() {
                     document.getElementById("corpSearchInput").value = "";
                     listDiv.innerHTML = "";
-                    addAndOpenTab(corp.code, corp.name);
+                    addAndOpenTab(corp.code, corp.name, corp.aliases);
                 };
                 listDiv.appendChild(itemDiv);
             });
@@ -269,13 +293,13 @@
             }
         });
 
-        function addAndOpenTab(code, name) {
+        function addAndOpenTab(code, name, aliases) {
             if (!openedTabs.some(t => t.code === code)) {
-                openedTabs.push({ code, name });
+                openedTabs.push({ code, name, aliases });
             }
             activeTabCode = code;
             renderTabs();
-            selectAndRenderCorp(code, name);
+            selectAndRenderCorp(code, name, aliases);
         }
 
         function closeTab(e, code) {
@@ -287,7 +311,7 @@
                 if (openedTabs.length > 0) {
                     const lastTab = openedTabs[openedTabs.length - 1];
                     activeTabCode = lastTab.code;
-                    selectAndRenderCorp(lastTab.code, lastTab.name);
+                    selectAndRenderCorp(lastTab.code, lastTab.name, lastTab.aliases);
                 } else {
                     activeTabCode = null;
                     clearDashboard();
@@ -300,7 +324,7 @@
             const container = document.getElementById("tabsContainer");
             container.innerHTML = "";
             if (openedTabs.length === 0) {
-                container.innerHTML = `<span style="font-size:12px; color:#888; padding:5px;">열린 기업 탭이 없습니다. 검색창에서 기업을 검색해보세요.</span>`;
+                container.innerHTML = `<span style="font-size:12px; color:#888; padding:5px;">열린 기업 탭이 없습니다. 상단에서 기업을 검색해보세요.</span>`;
                 return;
             }
             openedTabs.forEach(tabObj => {
@@ -310,7 +334,7 @@
                 tab.onclick = () => { 
                     activeTabCode = tabObj.code; 
                     renderTabs(); 
-                    selectAndRenderCorp(tabObj.code, tabObj.name); 
+                    selectAndRenderCorp(tabObj.code, tabObj.name, tabObj.aliases); 
                 };
                 container.appendChild(tab);
             });
@@ -365,15 +389,25 @@
             return value;
         }
 
-        // 고유번호(corp_code) 기반으로 과거 사명과 현재 사명을 완벽히 통합하여 10개년 조회
-        function selectAndRenderCorp(selectedCorpCode, selectedCorpName) {
+        // 고유번호(code) 또는 사명/별칭(aliases) 통합 필터링
+        function selectAndRenderCorp(selectedCorpCode, selectedCorpName, aliases = []) {
             const tableHead = document.querySelector("#financialTable thead tr");
             const tableBody = document.getElementById("tableBody");
             document.getElementById("reportTitle").innerText = `[${selectedCorpName}] 10개년 재무제표 요약표`;
 
             const corpRows = globalFinancialData.filter(item => {
                 const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
-                return code && String(code).trim() === String(selectedCorpCode);
+                const name = item.corp_name || item.회사명 || item.stock_name || item.name;
+                
+                // 1) 고유번호가 일치하면 무조건 포함
+                if (code && String(code).trim() === String(selectedCorpCode)) return true;
+                
+                // 2) 사명이나 과거 사명 목록 중 하나라도 일치하면 포함
+                if (name) {
+                    const cleanName = String(name).trim();
+                    if (cleanName === selectedCorpName || aliases.includes(cleanName)) return true;
+                }
+                return false;
             });
             
             const yearsSet = new Set();
