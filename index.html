@@ -131,9 +131,9 @@
         </div>
     </div>
 
-    <!-- 구글 RSS 20개 분석 기반 주요 이슈 기사 카드 -->
+    <!-- 구글 RSS 분석 기반 주요 이슈 기사 카드 -->
     <div class="card">
-        <h3>영업이익 급변 연도(±20%) 핵심 이슈 기사 분석 (Google RSS 20+ 분석)</h3>
+        <h3>영업이익 급변 연도(±20%) 핵심 이슈 기사 분석 (Google RSS 분석)</h3>
         <div id="newsContainer" class="news-grid">
             <div class="no-data" style="grid-column: 1 / -1;">기업을 선택하면 영업이익 변동 기사를 분석합니다.</div>
         </div>
@@ -162,7 +162,7 @@
         let openedTabs = []; 
         let activeTabCode = null;
 
-        // 1. 파일 로드 및 인덱싱
+        // 1. 파일 로드 및 인덱싱 (404 예외 처리 적용)
         window.addEventListener("DOMContentLoaded", async () => {
             const startTime = Date.now();
             let combinedData = [];
@@ -402,248 +402,130 @@
             return value;
         }
 
-        // 20개 이상 수집 및 중복 키워드 이슈 분류 알고리즘 (Google RSS 전용)
-      // 422 에러 없이 안정적으로 구글 RSS 기사 20개 수집 및 이슈 분석
-async function analyzeAndRenderGoogleNews(corpName, years, opValues) {
-    const container = document.getElementById("newsContainer");
-    container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">영업이익 변동(±20%) 연도 구글 기사를 수집하여 이슈 분석 중...</div>`;
+        // 2. 구글 RSS 뉴스 연동 함수 (async 키워드 완벽 수정 및 422 방지 우회 로직)
+        async function analyzeAndRenderGoogleNews(corpName, years, opValues) {
+            const container = document.getElementById("newsContainer");
+            container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">영업이익 변동(±20%) 연도 구글 기사를 수집하여 이슈 분석 중...</div>`;
 
-    let shiftEvents = [];
-    for (let i = 1; i < opValues.length; i++) {
-        const prev = opValues[i-1];
-        const curr = opValues[i];
-        if (prev !== 0) {
-            const diffRatio = ((curr - prev) / Math.abs(prev)) * 100;
-            if (Math.abs(diffRatio) >= 20) {
-                shiftEvents.push({
-                    year: years[i],
-                    ratio: diffRatio.toFixed(1),
-                    type: diffRatio > 0 ? "급증" : "급감"
-                });
-            }
-        }
-    }
-
-    if (shiftEvents.length === 0) {
-        container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">최근 10년 간 영업이익 20% 이상 급변 구간이 없습니다.</div>`;
-        return;
-    }
-
-    const targetEvent = shiftEvents.sort((a,b) => Math.abs(b.ratio) - Math.abs(a.ratio))[0];
-    const searchQuery = `${corpName} ${targetEvent.year}년 영업이익 ${targetEvent.type}`;
-    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=ko&gl=KR&ceid=KR:ko`;
-
-    // 422 에러를 방지하는 다중 CORS 우회 프록시 리스트
-    const proxyUrls = [
-        `https://corsproxy.io/?${encodeURIComponent(rssUrl)}`,
-        `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`
-    ];
-
-    let xmlText = "";
-    for (let proxy of proxyUrls) {
-        try {
-            const res = await fetch(proxy);
-            if (!res.ok) continue;
-            if (proxy.includes("allorigins")) {
-                const data = await res.json();
-                xmlText = data.contents;
-            } else {
-                xmlText = await res.text();
-            }
-            if (xmlText) break;
-        } catch (e) {}
-    }
-
-    if (!xmlText) {
-        container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">구글 뉴스 응답을 불러오지 못했습니다.</div>`;
-        return;
-    }
-
-    const xml = new DOMParser().parseFromString(xmlText, "text/xml");
-    const items = xml.querySelectorAll("item");
-
-    if (items.length === 0) {
-        container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">관련 수집 기사가 없습니다.</div>`;
-        return;
-    }
-
-    const wordCounts = {};
-    const stopWords = ["뉴스", "기사", "대해", "위해", "통해", "관련", corpName, targetEvent.year+"년", "영업이익"];
-
-    items.forEach(el => {
-        const title = el.querySelector("title") ? el.querySelector("title").textContent : "";
-        const cleanTitle = title.replace(/[^\w\s가-힣]/g, ' ');
-        const words = cleanTitle.split(/\s+/).filter(w => w.length >= 2 && !stopWords.includes(w));
-        words.forEach(w => { wordCounts[w] = (wordCounts[w] || 0) + 1; });
-    });
-
-    const topKeywords = Object.keys(wordCounts).sort((a,b) => wordCounts[b] - wordCounts[a]).slice(0, 4);
-    const selectedCards = [];
-    const usedLinks = new Set();
-
-    topKeywords.forEach(keyword => {
-        const matchedEl = Array.from(items).find(el => {
-            const title = el.querySelector("title") ? el.querySelector("title").textContent : "";
-            const link = el.querySelector("link") ? el.querySelector("link").textContent : "";
-            return title.includes(keyword) && !usedLinks.has(link);
-        });
-
-        if (matchedEl) {
-            const title = matchedEl.querySelector("title").textContent;
-            const link = matchedEl.querySelector("link").textContent;
-            const pubDate = matchedEl.querySelector("pubDate") ? matchedEl.querySelector("pubDate").textContent : "";
-            const source = matchedEl.querySelector("source") ? matchedEl.querySelector("source").textContent : "Google News";
-
-            usedLinks.add(link);
-            selectedCards.push({ title, link, pubDate, source, keyword, count: wordCounts[keyword] });
-        }
-    });
-
-    let cardsHtml = "";
-    const tagClass = targetEvent.type === "급증" ? "increase" : "";
-    const bgGradients = [
-        'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
-        'linear-gradient(135deg, #2c3e50 0%, #3498db 100%)',
-        'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
-        'linear-gradient(135deg, #8e44ad 0%, #c0392b 100%)'
-    ];
-
-    selectedCards.forEach((c, idx) => {
-        const pubDateStr = c.pubDate ? new Date(c.pubDate).toLocaleDateString() : "";
-        cardsHtml += `
-            <a href="${c.link}" target="_blank" class="news-card">
-                <div class="news-thumb" style="background: ${bgGradients[idx % bgGradients.length]};">
-                    <span class="news-tag ${tagClass}">${targetEvent.year}년 영업이익 ${targetEvent.ratio}% ${targetEvent.type}</span>
-                    <div style="font-size:14px; font-weight:bold;">${corpName} 이슈</div>
-                </div>
-                <div class="news-body">
-                    <div class="news-title">${c.title}</div>
-                    <div class="news-meta">
-                        <span class="cluster-badge">이슈 중복 언급 ${c.count}회 ('${c.keyword}')</span>
-                        <span>${pubDateStr || c.source}</span>
-                    </div>
-                </div>
-            </a>
-        `;
-    });
-
-    container.innerHTML = cardsHtml || `<div class="no-data" style="grid-column: 1 / -1;">기사 추출에 실패했습니다.</div>`;
-}
-
-            // 가장 변동 폭이 큰 연도 추출
-            const targetEvent = shiftEvents.sort((a,b) => Math.abs(b.ratio) - Math.abs(a.ratio))[0];
-            const searchQuery = `${corpName} ${targetEvent.year}년 영업이익 ${targetEvent.type} 실적`;
-
-            // Google News RSS 다중 탐색 URL
-            const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=ko&gl=KR&ceid=KR:ko`;
-            
-            // RSS2JSON 오픈 API 서비스를 활용해 CORS 없이 20개 뉴스 수집
-            const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}&api_key=public`;
-
-            try {
-                let items = [];
-                const res = await fetch(apiUrl);
-                const data = await res.json();
-                
-                if (data.status === 'ok' && data.items && data.items.length > 0) {
-                    items = data.items;
-                } else {
-                    // Fallback proxy 사용
-                    const fallbackRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`);
-                    const fallbackData = await fallbackRes.json();
-                    const xml = new DOMParser().parseFromString(fallbackData.contents, "text/xml");
-                    const xmlItems = xml.querySelectorAll("item");
-                    xmlItems.forEach(el => {
-                        items.push({
-                            title: el.querySelector("title") ? el.querySelector("title").textContent : "",
-                            link: el.querySelector("link") ? el.querySelector("link").textContent : "#",
-                            pubDate: el.querySelector("pubDate") ? el.querySelector("pubDate").textContent : "",
-                            author: el.querySelector("source") ? el.querySelector("source").textContent : "구글 뉴스"
-                        });
-                    });
-                }
-
-                if (items.length === 0) {
-                    container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">관련 수집 기사가 없습니다.</div>`;
-                    return;
-                }
-
-                // 기사 제목에서 핵심 키워드 빈도 추출 및 이슈 분류 (중복 키워드 클러스터링)
-                const wordCounts = {};
-                const stopWords = ["뉴스", "기사", "대해", "위해", "통해", "관련", corpName, targetEvent.year+"년", "영업이익"];
-
-                items.forEach(item => {
-                    const cleanTitle = item.title.replace(/[^\w\s가-힣]/g, ' ');
-                    const words = cleanTitle.split(/\s+/).filter(w => w.length >= 2 && !stopWords.includes(w));
-                    words.forEach(w => {
-                        wordCounts[w] = (wordCounts[w] || 0) + 1;
-                    });
-                });
-
-                // 가장 빈도수가 높은 대표 키워드 상위 4개 선정
-                const topKeywords = Object.keys(wordCounts).sort((a,b) => wordCounts[b] - wordCounts[a]).slice(0, 4);
-
-                // 중복도가 가장 높은 이슈 키워드별 대표 기사 1개씩 선별하여 사각 카드 구성
-                const selectedCards = [];
-                const usedLinks = new Set();
-
-                topKeywords.forEach(keyword => {
-                    const matchedItem = items.find(it => it.title.includes(keyword) && !usedLinks.has(it.link));
-                    if (matchedItem) {
-                        usedLinks.add(matchedItem.link);
-                        selectedCards.push({
-                            item: matchedItem,
-                            keyword: keyword,
-                            count: wordCounts[keyword]
+            let shiftEvents = [];
+            for (let i = 1; i < opValues.length; i++) {
+                const prev = opValues[i-1];
+                const curr = opValues[i];
+                if (prev !== 0) {
+                    const diffRatio = ((curr - prev) / Math.abs(prev)) * 100;
+                    if (Math.abs(diffRatio) >= 20) {
+                        shiftEvents.push({
+                            year: years[i],
+                            ratio: diffRatio.toFixed(1),
+                            type: diffRatio > 0 ? "급증" : "급감"
                         });
                     }
-                });
-
-                if (selectedCards.length === 0) {
-                    items.slice(0, 4).forEach(it => {
-                        selectedCards.push({ item: it, keyword: "실적분석", count: 1 });
-                    });
                 }
+            }
 
-                // 사각형 이미지 카드 형태로 렌더링
-                let cardsHtml = "";
-                const tagClass = targetEvent.type === "급증" ? "increase" : "";
-                
-                selectedCards.forEach((c, idx) => {
-                    const title = c.item.title;
-                    const link = c.item.link;
-                    const pubDate = c.item.pubDate ? new Date(c.item.pubDate).toLocaleDateString() : "";
-                    const source = c.item.author || "Google News";
-                    
-                    const bgGradients = [
-                        'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
-                        'linear-gradient(135deg, #2c3e50 0%, #3498db 100%)',
-                        'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
-                        'linear-gradient(135deg, #8e44ad 0%, #c0392b 100%)'
-                    ];
+            if (shiftEvents.length === 0) {
+                container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">최근 10년 간 영업이익 20% 이상 급변 구간이 없습니다.</div>`;
+                return;
+            }
 
-                    cardsHtml += `
-                        <a href="${link}" target="_blank" class="news-card">
-                            <div class="news-thumb" style="background: ${bgGradients[idx % bgGradients.length]};">
-                                <span class="news-tag ${tagClass}">${targetEvent.year}년 영업이익 ${targetEvent.ratio}% ${targetEvent.type}</span>
-                                <div style="font-size:14px; font-weight:bold;">${corpName} 이슈</div>
-                            </div>
-                            <div class="news-body">
-                                <div class="news-title">${title}</div>
-                                <div class="news-meta">
-                                    <span class="cluster-badge">이슈 중복 언급 ${c.count}회 ('${c.keyword}')</span>
-                                    <span>${pubDate || source}</span>
-                                </div>
-                            </div>
-                        </a>
-                    `;
+            const targetEvent = shiftEvents.sort((a,b) => Math.abs(b.ratio) - Math.abs(a.ratio))[0];
+            const searchQuery = `${corpName} ${targetEvent.year}년 영업이익 ${targetEvent.type}`;
+            const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=ko&gl=KR&ceid=KR:ko`;
+
+            const proxyUrls = [
+                `https://corsproxy.io/?${encodeURIComponent(rssUrl)}`,
+                `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`
+            ];
+
+            let xmlText = "";
+            for (let proxy of proxyUrls) {
+                try {
+                    const res = await fetch(proxy);
+                    if (!res.ok) continue;
+                    if (proxy.includes("allorigins")) {
+                        const data = await res.json();
+                        xmlText = data.contents;
+                    } else {
+                        xmlText = await res.text();
+                    }
+                    if (xmlText) break;
+                } catch (e) {}
+            }
+
+            if (!xmlText) {
+                container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">구글 뉴스 응답을 불러오지 못했습니다.</div>`;
+                return;
+            }
+
+            const xml = new DOMParser().parseFromString(xmlText, "text/xml");
+            const items = xml.querySelectorAll("item");
+
+            if (items.length === 0) {
+                container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">관련 수집 기사가 없습니다.</div>`;
+                return;
+            }
+
+            const wordCounts = {};
+            const stopWords = ["뉴스", "기사", "대해", "위해", "통해", "관련", corpName, targetEvent.year+"년", "영업이익"];
+
+            items.forEach(el => {
+                const title = el.querySelector("title") ? el.querySelector("title").textContent : "";
+                const cleanTitle = title.replace(/[^\w\s가-힣]/g, ' ');
+                const words = cleanTitle.split(/\s+/).filter(w => w.length >= 2 && !stopWords.includes(w));
+                words.forEach(w => { wordCounts[w] = (wordCounts[w] || 0) + 1; });
+            });
+
+            const topKeywords = Object.keys(wordCounts).sort((a,b) => wordCounts[b] - wordCounts[a]).slice(0, 4);
+            const selectedCards = [];
+            const usedLinks = new Set();
+
+            topKeywords.forEach(keyword => {
+                const matchedEl = Array.from(items).find(el => {
+                    const title = el.querySelector("title") ? el.querySelector("title").textContent : "";
+                    const link = el.querySelector("link") ? el.querySelector("link").textContent : "";
+                    return title.includes(keyword) && !usedLinks.has(link);
                 });
 
-                container.innerHTML = cardsHtml;
+                if (matchedEl) {
+                    const title = matchedEl.querySelector("title").textContent;
+                    const link = matchedEl.querySelector("link").textContent;
+                    const pubDate = matchedEl.querySelector("pubDate") ? matchedEl.querySelector("pubDate").textContent : "";
+                    const source = matchedEl.querySelector("source") ? matchedEl.querySelector("source").textContent : "Google News";
 
-            } catch (err) {
-                container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">구글 뉴스 RSS 분석 중 오류가 발생했습니다.</div>`;
-            }
+                    usedLinks.add(link);
+                    selectedCards.push({ title, link, pubDate, source, keyword, count: wordCounts[keyword] });
+                }
+            });
+
+            let cardsHtml = "";
+            const tagClass = targetEvent.type === "급증" ? "increase" : "";
+            const bgGradients = [
+                'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
+                'linear-gradient(135deg, #2c3e50 0%, #3498db 100%)',
+                'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                'linear-gradient(135deg, #8e44ad 0%, #c0392b 100%)'
+            ];
+
+            selectedCards.forEach((c, idx) => {
+                const pubDateStr = c.pubDate ? new Date(c.pubDate).toLocaleDateString() : "";
+                cardsHtml += `
+                    <a href="${c.link}" target="_blank" class="news-card">
+                        <div class="news-thumb" style="background: ${bgGradients[idx % bgGradients.length]};">
+                            <span class="news-tag ${tagClass}">${targetEvent.year}년 영업이익 ${targetEvent.ratio}% ${targetEvent.type}</span>
+                            <div style="font-size:14px; font-weight:bold;">${corpName} 이슈</div>
+                        </div>
+                        <div class="news-body">
+                            <div class="news-title">${c.title}</div>
+                            <div class="news-meta">
+                                <span class="cluster-badge">이슈 중복 언급 ${c.count}회 ('${c.keyword}')</span>
+                                <span>${pubDateStr || c.source}</span>
+                            </div>
+                        </div>
+                    </a>
+                `;
+            });
+
+            container.innerHTML = cardsHtml || `<div class="no-data" style="grid-column: 1 / -1;">기사 추출에 실패했습니다.</div>`;
         }
 
         function selectAndRenderCorp(selectedCorpCode, selectedCorpName, aliases = []) {
@@ -707,7 +589,7 @@ async function analyzeAndRenderGoogleNews(corpName, years, opValues) {
             updateSummaryCards(sortedYears, accountDataMap, corpRows);
             const opValues = renderAllCharts(sortedYears, accountDataMap, corpRows);
 
-            // 20개 이상 수집 및 이슈 분류 알고리즘 구글 RSS 호출
+            // 20개 이상 수집 및 이슈 분류 구글 RSS 분석 실행
             analyzeAndRenderGoogleNews(selectedCorpName, sortedYears, opValues);
         }
 
