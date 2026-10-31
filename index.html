@@ -49,10 +49,14 @@
         /* 차트 2x2 그리드 */
         .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 20px; margin-bottom: 20px; }
         .card { background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        .card h3 { margin-top: 0; color: var(--primary); font-size: 15px; border-bottom: 2px solid #f0f2f5; padding-bottom: 8px; }
+        .card h3 { margin-top: 0; color: var(--primary); font-size: 15px; border-bottom: 2px solid #f0f2f5; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
         .chart-container { position: relative; height: 260px; width: 100%; margin-top: 10px; }
 
-        /* 뉴스 이슈 사각 카드 그리드 */
+        /* 뉴스 수동 분석 버튼 스타일 */
+        .btn-analyze-news { background: #3498db; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        .btn-analyze-news:hover { background: #2980b9; }
+
+        /* 뉴스 이슈 사각 카드 그리드 및 로더 */
         .news-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 15px; }
         .news-card { border: 1px solid #e1e4e8; border-radius: 10px; overflow: hidden; background: #fff; text-decoration: none; color: inherit; transition: transform 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; }
         .news-card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,0.12); }
@@ -63,6 +67,9 @@
         .news-title { font-size: 13px; font-weight: bold; line-height: 1.4; margin-bottom: 10px; color: #2d3748; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .news-meta { font-size: 11px; color: #718096; display: flex; justify-content: space-between; align-items: center; }
         .cluster-badge { background: #ebf8ff; color: #2b6cb0; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: bold; }
+
+        .news-loader { grid-column: 1 / -1; padding: 30px; text-align: center; color: #555; display: flex; flex-direction: column; align-items: center; }
+        .news-spinner { width: 30px; height: 30px; border: 3px solid #cbd5e0; border-top-color: #3498db; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 10px; }
 
         /* 테이블 스타일 */
         .table-responsive { overflow-x: auto; margin-top: 10px; }
@@ -88,14 +95,14 @@
 
     <header>
         <h1>상장사 10년 재무제표 종합 분석 대시보드</h1>
-        <div class="subtitle">영업이익 급증/급하락 연도별 원인 기사를 구글 RSS에서 개별 정밀 수집합니다.</div>
+        <div class="subtitle">영업이익 급증/급하락 연도별 원인 기사를 구글 검색 기반으로 정밀 매핑합니다.</div>
     </header>
 
     <!-- 검색 컨트롤 패널 -->
     <div class="control-panel">
         <div class="search-container">
             <label for="corpSearchInput">기업 검색</label>
-            <input type="text" id="corpSearchInput" placeholder="기업명을 입력하세요 (예: 삼성전자, SK하이닉스...)" oninput="onSearchInput(this.value)" autocomplete="off">
+            <input type="text" id="corpSearchInput" placeholder="기업명을 입력하세요 (예: 유한양행, 삼성전자, SK하이닉스...)" oninput="onSearchInput(this.value)" autocomplete="off">
             <div id="autocompleteList" class="autocomplete-items"></div>
         </div>
     </div>
@@ -133,9 +140,12 @@
 
     <!-- 연도별 급증/급하락 원인 기사 카드 영역 -->
     <div class="card">
-        <h3>영업이익 급변 연도별 원인 분석 이슈 기사 (연도별 1개 대표 매핑)</h3>
+        <h3>
+            <span>영업이익 급변 연도별 원인 분석 이슈 기사</span>
+            <button class="btn-analyze-news" id="btnAnalyzeNews" onclick="startNewsAnalysis()">뉴스 이슈 분석 시작</button>
+        </h3>
         <div id="newsContainer" class="news-grid">
-            <div class="no-data" style="grid-column: 1 / -1;">기업을 선택하면 연도별 영업이익 변동 기사를 각각 검색합니다.</div>
+            <div class="no-data" style="grid-column: 1 / -1;">오른쪽 상단의 [뉴스 이슈 분석 시작] 버튼을 누르면 연도별 변동 기사를 가져옵니다.</div>
         </div>
     </div>
 
@@ -159,7 +169,7 @@
         let uniqueCorps = []; 
         let corpCodeToAliases = new Map(); 
         let chartInstances = {};
-        let openedTabs = []; 
+        let openedTabs = []; // { code, name, aliases, newsCache: null, sortedYears: [], opValues: [] }
         let activeTabCode = null;
 
         window.addEventListener("DOMContentLoaded", async () => {
@@ -195,7 +205,7 @@
             }
 
             document.getElementById("progressBar").style.width = "100%";
-            document.getElementById("loadingSubText").innerText = "연도별 원인 분석 엔진 준비 완료!";
+            document.getElementById("loadingSubText").innerText = "동기화 완료!";
             
             globalFinancialData = combinedData;
             extractUniqueCorps(globalFinancialData);
@@ -305,8 +315,10 @@
         });
 
         function addAndOpenTab(code, name, aliases) {
-            if (!openedTabs.some(t => t.code === code)) {
-                openedTabs.push({ code, name, aliases });
+            let tab = openedTabs.find(t => t.code === code);
+            if (!tab) {
+                tab = { code, name, aliases, newsCache: null, sortedYears: [], opValues: [] };
+                openedTabs.push(tab);
             }
             activeTabCode = code;
             renderTabs();
@@ -401,10 +413,23 @@
             return value;
         }
 
-        // 연도별 독립 검색 및 CORS 에러 대비 다중 백업 + 다이렉트 검색 카드 생성기
-        async function analyzeAndRenderGoogleNews(corpName, years, opValues) {
+        // 뉴스 분석 버튼 클릭 시 호출
+        async function startNewsAnalysis() {
+            const currentTab = openedTabs.find(t => t.code === activeTabCode);
+            if (!currentTab || currentTab.sortedYears.length === 0) return;
+
+            await analyzeAndRenderGoogleNews(currentTab.name, currentTab.sortedYears, currentTab.opValues, currentTab);
+        }
+
+        // 비동기 뉴스 분석 및 탭 데이터(newsCache) 영구 캐싱 로직
+        async function analyzeAndRenderGoogleNews(corpName, years, opValues, tabObj) {
             const container = document.getElementById("newsContainer");
-            container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">영업이익 급증·급하락 연도별 원인 기사를 개별 수집 분석 중...</div>`;
+            container.innerHTML = `
+                <div class="news-loader">
+                    <div class="news-spinner"></div>
+                    <div>${corpName}의 영업이익 변동(±20%) 연도별 기사 수집 및 이슈 탐색 중...</div>
+                </div>
+            `;
 
             let shiftEvents = [];
             for (let i = 1; i < opValues.length; i++) {
@@ -423,7 +448,9 @@
             }
 
             if (shiftEvents.length === 0) {
-                container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">최근 10년 간 영업이익 20% 이상 급변 구간이 없습니다.</div>`;
+                const noDataHtml = `<div class="no-data" style="grid-column: 1 / -1;">최근 10년 간 영업이익 20% 이상 급변 구간이 없습니다.</div>`;
+                container.innerHTML = noDataHtml;
+                if (tabObj) tabObj.newsCache = noDataHtml;
                 return;
             }
 
@@ -448,7 +475,12 @@
 
                 for (let proxy of proxyUrls) {
                     try {
-                        const res = await fetch(proxy);
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3초 타임아웃 예외 처리
+                        
+                        const res = await fetch(proxy, { signal: controller.signal });
+                        clearTimeout(timeoutId);
+
                         if (!res.ok) continue;
                         let xmlText = "";
                         if (proxy.includes("allorigins")) {
@@ -472,11 +504,11 @@
                     } catch(e) {}
                 }
 
-                // RSS 프록시가 차단되었을 때의 안전한 다이렉트 검색 카드 Fallback
+                // 타임아웃이나 차단 발생 시 즉시 구글 뉴스 다이렉트 검색 링크로 보장
                 if (!bestItem) {
                     bestItem = {
-                        title: `${corpName} ${ev.year}년 영업이익 ${ev.ratio}% ${ev.type} 주요 원인 및 실적 발표 뉴스`,
-                        link: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`,
+                        title: `${corpName} ${ev.year}년 영업이익 ${ev.ratio}% ${ev.type} 주요 원인 및 실적 분석 리포트`,
+                        link: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&tbm=nws`,
                         pubDate: `${ev.year}년도`,
                         source: "구글 뉴스 검색"
                     };
@@ -494,7 +526,7 @@
                         <div class="news-body">
                             <div class="news-title">${bestItem.title}</div>
                             <div class="news-meta">
-                                <span class="cluster-badge">원인 분석 리포트 링크</span>
+                                <span class="cluster-badge">기사 원문 연결</span>
                                 <span>${pubDateStr || bestItem.source}</span>
                             </div>
                         </div>
@@ -502,7 +534,8 @@
                 `;
             }
 
-            container.innerHTML = cardsHtml || `<div class="no-data" style="grid-column: 1 / -1;">연도별 원인 기사를 찾지 못했습니다.</div>`;
+            container.innerHTML = cardsHtml;
+            if (tabObj) tabObj.newsCache = cardsHtml; // 탭 객체에 결과 캐싱 저장
         }
 
         function selectAndRenderCorp(selectedCorpCode, selectedCorpName, aliases = []) {
@@ -566,8 +599,20 @@
             updateSummaryCards(sortedYears, accountDataMap, corpRows);
             const opValues = renderAllCharts(sortedYears, accountDataMap, corpRows);
 
-            // 연도별 개별 원인 분석 기사 매핑 함수 호출
-            analyzeAndRenderGoogleNews(selectedCorpName, sortedYears, opValues);
+            // 탭 객체에 연도 및 영업이익 데이터 등록
+            const currentTab = openedTabs.find(t => t.code === selectedCorpCode);
+            if (currentTab) {
+                currentTab.sortedYears = sortedYears;
+                currentTab.opValues = opValues;
+
+                // 이미 분석된 뉴스 캐시 데이터가 있다면 탭 전환 시 복원, 없으면 안내 문구 표시
+                const container = document.getElementById("newsContainer");
+                if (currentTab.newsCache) {
+                    container.innerHTML = currentTab.newsCache;
+                } else {
+                    container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">오른쪽 상단의 [뉴스 이슈 분석 시작] 버튼을 누르면 연도별 변동 기사를 가져옵니다.</div>`;
+                }
+            }
         }
 
         function renderFlatRowStructure(rows, sortedYears) {
