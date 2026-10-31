@@ -401,10 +401,10 @@
             return value;
         }
 
-        // 각 급증/급하락 연도별로 개별 검색하여 연도별 가장 빈도 높은 기사 1개씩 추출하는 알고리즘
+        // 연도별 독립 검색 및 CORS 에러 대비 다중 백업 + 다이렉트 검색 카드 생성기
         async function analyzeAndRenderGoogleNews(corpName, years, opValues) {
             const container = document.getElementById("newsContainer");
-            container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">영업이익 급증·급하락 연도별 원인 기사를 개별 수집 및 클러스터링 분석 중...</div>`;
+            container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">영업이익 급증·급하락 연도별 원인 기사를 개별 수집 분석 중...</div>`;
 
             let shiftEvents = [];
             for (let i = 1; i < opValues.length; i++) {
@@ -435,63 +435,55 @@
                 'linear-gradient(135deg, #8e44ad 0%, #c0392b 100%)'
             ];
 
-            // 연도별로 각각 독립적인 검색 수행 ("검색기업 연도 영업이익 급상승/급하락 원인")
             for (let idx = 0; idx < shiftEvents.length; idx++) {
                 const ev = shiftEvents[idx];
-                const query = `${corpName} ${ev.year}년 영업이익 ${ev.type} 원인`;
-                const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ko&gl=KR&ceid=KR:ko`;
+                const searchQuery = `${corpName} ${ev.year}년 영업이익 ${ev.type} 원인`;
+                const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=ko&gl=KR&ceid=KR:ko`;
                 
-                // 다중 프록시로 안정성 확보
+                let bestItem = null;
                 const proxyUrls = [
                     `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`,
                     `https://corsproxy.io/?${encodeURIComponent(rssUrl)}`
                 ];
 
-                let xmlText = "";
                 for (let proxy of proxyUrls) {
                     try {
                         const res = await fetch(proxy);
                         if (!res.ok) continue;
+                        let xmlText = "";
                         if (proxy.includes("allorigins")) {
                             const data = await res.json();
                             xmlText = data.contents;
                         } else {
                             xmlText = await res.text();
                         }
-                        if (xmlText) break;
+                        if (xmlText) {
+                            const xml = new DOMParser().parseFromString(xmlText, "text/xml");
+                            const items = xml.querySelectorAll("item");
+                            if (items.length > 0) {
+                                const title = items[0].querySelector("title") ? items[0].querySelector("title").textContent : `${ev.year}년 ${corpName} 실적 분석 기사`;
+                                const link = items[0].querySelector("link") ? items[0].querySelector("link").textContent : `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+                                const pubDate = items[0].querySelector("pubDate") ? items[0].querySelector("pubDate").textContent : "";
+                                const source = items[0].querySelector("source") ? items[0].querySelector("source").textContent : "Google News";
+                                bestItem = { title, link, pubDate, source };
+                                break;
+                            }
+                        }
                     } catch(e) {}
                 }
 
-                if (!xmlText) continue;
+                // RSS 프록시가 차단되었을 때의 안전한 다이렉트 검색 카드 Fallback
+                if (!bestItem) {
+                    bestItem = {
+                        title: `${corpName} ${ev.year}년 영업이익 ${ev.ratio}% ${ev.type} 주요 원인 및 실적 발표 뉴스`,
+                        link: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`,
+                        pubDate: `${ev.year}년도`,
+                        source: "구글 뉴스 검색"
+                    };
+                }
 
-                const xml = new DOMParser().parseFromString(xmlText, "text/xml");
-                const items = xml.querySelectorAll("item");
-                if (items.length === 0) continue;
-
-                // 중복 키워드(클러스터링) 분석을 통해 가장 지분율이 높은 베스트 기사 1개 선정
-                const wordCounts = {};
-                const stopWords = ["뉴스", "기사", "대해", "위해", "통해", "관련", corpName, ev.year+"년", "영업이익", ev.type, "원인"];
-                const parsedItems = [];
-
-                items.forEach(el => {
-                    const title = el.querySelector("title") ? el.querySelector("title").textContent : "";
-                    const link = el.querySelector("link") ? el.querySelector("link").textContent : "#";
-                    const pubDate = el.querySelector("pubDate") ? el.querySelector("pubDate").textContent : "";
-                    const source = el.querySelector("source") ? el.querySelector("source").textContent : "Google News";
-
-                    parsedItems.push({ title, link, pubDate, source });
-
-                    const cleanTitle = title.replace(/[^\w\s가-힣]/g, ' ');
-                    const words = cleanTitle.split(/\s+/).filter(w => w.length >= 2 && !stopWords.includes(w));
-                    words.forEach(w => { wordCounts[w] = (wordCounts[w] || 0) + 1; });
-                });
-
-                const topKeyword = Object.keys(wordCounts).sort((a,b) => wordCounts[b] - wordCounts[a])[0] || "실적분석";
-
-                // 해당 연도 검색 결과 중 핵심 키워드가 가장 많이 포함된 대표 기사 1개 선택
-                const bestItem = parsedItems.find(it => it.title.includes(topKeyword)) || parsedItems[0];
                 const tagClass = ev.type === "급상승" ? "increase" : "";
-                const pubDateStr = bestItem.pubDate ? new Date(bestItem.pubDate).toLocaleDateString() : "";
+                const pubDateStr = bestItem.pubDate && !bestItem.pubDate.includes("년도") ? new Date(bestItem.pubDate).toLocaleDateString() : bestItem.pubDate;
 
                 cardsHtml += `
                     <a href="${bestItem.link}" target="_blank" class="news-card">
@@ -502,7 +494,7 @@
                         <div class="news-body">
                             <div class="news-title">${bestItem.title}</div>
                             <div class="news-meta">
-                                <span class="cluster-badge">핵심 이슈 키워드 ('${topKeyword}')</span>
+                                <span class="cluster-badge">원인 분석 리포트 링크</span>
                                 <span>${pubDateStr || bestItem.source}</span>
                             </div>
                         </div>
