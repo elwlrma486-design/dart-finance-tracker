@@ -72,16 +72,16 @@
     <!-- 로딩바 모달 -->
     <div id="loadingOverlay">
         <div class="spinner"></div>
-        <div id="loadingMessage">DART 10년 재무 데이터 동기화 중...</div>
+        <div id="loadingMessage">DART 기업 인덱스 로딩 중...</div>
         <div class="progress-bar-container">
             <div class="progress-bar" id="progressBar"></div>
         </div>
-        <div id="loadingSubText">파트 파일 로딩 준비 중...</div>
+        <div id="loadingSubText">초고속 모바일 최적화 준비 중...</div>
     </div>
 
     <header>
         <h1>DART 10년 재무분석 & 기업 분석 보고서</h1>
-        <div class="subtitle">10개년 재무제표 원자료를 정밀 진단하여 A4 규격의 전문 분석 보고서를 자동 생성합니다.</div>
+        <div class="subtitle">지연 로딩(Lazy Loading) 기반 초고속 모바일 최적화 대시보드</div>
     </header>
 
     <!-- 검색 컨트롤 패널 -->
@@ -150,93 +150,32 @@
     </div>
 
     <script>
-        let globalFinancialData = [];
-        let uniqueCorps = []; 
-        let corpCodeToAliases = new Map(); 
+        let corpIndexMap = [];          // corp_index.json 데이터 캐시
+        let loadedPartsCache = {};      // 이미 불러온 파트 파일 메모리 캐시
         let chartInstances = {};
         let openedTabs = []; 
         let activeTabCode = null;
 
+        // 1단계: 초경량 인덱스 파일만 먼저 0.1초 만에 로드
         window.addEventListener("DOMContentLoaded", async () => {
-            const startTime = Date.now();
-            let combinedData = [];
-            let partIndex = 1;
-            let hasMore = true;
-            const estimatedTotalParts = 60; 
+            try {
+                const response = await fetch("corp_index.json");
+                if (!response.ok) throw new Error("인덱스 파일을 찾을 수 없습니다.");
+                corpIndexMap = await response.json();
 
-            while (hasMore) {
-                const fileName = `corps_financials_part_${partIndex}.json`;
-                try {
-                    const response = await fetch(fileName);
-                    if (!response.ok) { hasMore = false; break; }
-                    const partData = await response.json();
-                    if (Array.isArray(partData)) combinedData = combinedData.concat(partData);
-                    else if (typeof partData === 'object' && partData !== null) combinedData.push(partData);
-                    
-                    const progressPercent = Math.min(Math.floor((partIndex / estimatedTotalParts) * 100), 95);
-                    document.getElementById("progressBar").style.width = progressPercent + "%";
-                    
-                    const elapsedSec = (Date.now() - startTime) / 1000;
-                    document.getElementById("loadingSubText").innerText = `데이터 로딩 중 (${partIndex}번째 파트) · ${Math.floor(elapsedSec)}초 경과`;
+                document.getElementById("progressBar").style.width = "100%";
+                document.getElementById("loadingSubText").innerText = "모바일 최적화 로딩 완료!";
 
-                    partIndex++;
-                } catch (error) {
-                    hasMore = false;
-                }
+                setTimeout(() => {
+                    const overlay = document.getElementById("loadingOverlay");
+                    overlay.style.opacity = '0';
+                    setTimeout(() => { overlay.style.display = 'none'; }, 500);
+                }, 300);
+            } catch (error) {
+                document.getElementById("loadingSubText").innerText = "corp_index.json 파일을 생성해 업로드해주세요!";
+                console.error(error);
             }
-
-            document.getElementById("progressBar").style.width = "100%";
-            document.getElementById("loadingSubText").innerText = "인덱싱 완료!";
-            
-            globalFinancialData = combinedData;
-            extractUniqueCorps(globalFinancialData);
-
-            setTimeout(() => {
-                const overlay = document.getElementById("loadingOverlay");
-                overlay.style.opacity = '0';
-                setTimeout(() => { overlay.style.display = 'none'; }, 500);
-            }, 400);
         });
-
-        function extractUniqueCorps(data) {
-            const nameToCodeMap = new Map();
-            const codeToNamesMap = new Map();
-            const allNamesSet = new Set();
-
-            data.forEach(item => {
-                const name = item.corp_name || item.회사명 || item.stock_name || item.name;
-                const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
-                if (name) {
-                    const cleanName = String(name).trim();
-                    if (!cleanName) return;
-                    allNamesSet.add(cleanName);
-                    if (code) {
-                        const cleanCode = String(code).trim();
-                        nameToCodeMap.set(cleanName, cleanCode);
-                        if (!codeToNamesMap.has(cleanCode)) codeToNamesMap.set(cleanCode, new Set());
-                        codeToNamesMap.get(cleanCode).add(cleanName);
-                    }
-                }
-            });
-
-            corpCodeToAliases = codeToNamesMap;
-            const list = [];
-            const processedNames = new Set();
-
-            allNamesSet.forEach(name => {
-                if (processedNames.has(name)) return;
-                const code = nameToCodeMap.get(name) || name;
-                let aliases = [name];
-                if (nameToCodeMap.has(name) && codeToNamesMap.has(code)) {
-                    aliases = Array.from(codeToNamesMap.get(code));
-                    aliases.forEach(a => processedNames.add(a));
-                } else {
-                    processedNames.add(name);
-                }
-                list.push({ code, name: aliases[0], aliases });
-            });
-            uniqueCorps = list.sort((a, b) => a.name.localeCompare(b.name));
-        }
 
         function onSearchInput(val) {
             const listDiv = document.getElementById("autocompleteList");
@@ -244,7 +183,7 @@
             const query = val.trim().toLowerCase();
             if (!query) return;
 
-            const matched = uniqueCorps.filter(item => item.aliases.some(alias => alias.toLowerCase().includes(query))).slice(0, 15);
+            const matched = corpIndexMap.filter(item => item.name.toLowerCase().includes(query)).slice(0, 15);
             if (matched.length === 0) {
                 listDiv.innerHTML = `<div class="autocomplete-item" style="color:#888;">검색 결과가 없습니다.</div>`;
                 return;
@@ -253,12 +192,12 @@
             matched.forEach(corp => {
                 const itemDiv = document.createElement("div");
                 itemDiv.classList.add("autocomplete-item");
-                const matchedAlias = corp.aliases.find(a => a.toLowerCase().includes(query));
-                itemDiv.textContent = (matchedAlias && matchedAlias !== corp.name) ? `${corp.name} (${matchedAlias})` : corp.name;
+                itemDiv.textContent = corp.name;
                 itemDiv.onclick = () => {
                     document.getElementById("corpSearchInput").value = "";
                     listDiv.innerHTML = "";
-                    addAndOpenTab(corp.code, corp.name, corp.aliases);
+                    // 클릭 시 해당 기업의 고유번호와 속한 파트 번호를 전달하여 지연 로딩 수행
+                    addAndOpenTab(corp.code, corp.name, corp.part);
                 };
                 listDiv.appendChild(itemDiv);
             });
@@ -268,15 +207,34 @@
             if (!e.target.closest('.search-container')) document.getElementById("autocompleteList").innerHTML = "";
         });
 
-        function addAndOpenTab(code, name, aliases) {
+        async function addAndOpenTab(code, name, partNum) {
             let tab = openedTabs.find(t => t.code === code);
             if (!tab) {
-                tab = { code, name, aliases, reportCache: null, sortedYears: [], revValues: [], opValues: [], netValues: [], eqValues: [], liabValues: [] };
+                tab = { code, name, partNum, reportCache: null, sortedYears: [], revValues: [], opValues: [], netValues: [], eqValues: [], liabValues: [] };
                 openedTabs.push(tab);
             }
             activeTabCode = code;
             renderTabs();
-            selectAndRenderCorp(code, name, aliases);
+
+            // 해당 파트 데이터가 캐시에 없을 때만 핀포인트로 다운로드
+            if (!loadedPartsCache[partNum]) {
+                const overlay = document.getElementById("loadingOverlay");
+                overlay.style.opacity = '1';
+                overlay.style.display = 'flex';
+                document.getElementById("loadingSubText").innerText = `${name} 데이터 로딩 중...`;
+
+                try {
+                    const res = await fetch(`corps_financials_part_${partNum}.json`);
+                    loadedPartsCache[partNum] = await res.json();
+                } catch (err) {
+                    alert("파트 데이터를 불러오는 중 오류가 발생했습니다.");
+                }
+
+                overlay.style.opacity = '0';
+                setTimeout(() => { overlay.style.display = 'none'; }, 300);
+            }
+
+            selectAndRenderCorpFromPart(code, name, loadedPartsCache[partNum]);
         }
 
         function closeTab(e, code) {
@@ -288,7 +246,7 @@
                 if (openedTabs.length > 0) {
                     const lastTab = openedTabs[openedTabs.length - 1];
                     activeTabCode = lastTab.code;
-                    selectAndRenderCorp(lastTab.code, lastTab.name, lastTab.aliases);
+                    addAndOpenTab(lastTab.code, lastTab.name, lastTab.partNum);
                 } else {
                     activeTabCode = null;
                     clearDashboard();
@@ -308,7 +266,7 @@
                 const tab = document.createElement("div");
                 tab.className = `tab-item ${tabObj.code === activeTabCode ? 'active' : ''}`;
                 tab.innerHTML = `<span>${tabObj.name}</span> <span class="tab-close" onclick="closeTab(event, '${tabObj.code}')">&times;</span>`;
-                tab.onclick = () => { activeTabCode = tabObj.code; renderTabs(); selectAndRenderCorp(tabObj.code, tabObj.name, tabObj.aliases); };
+                tab.onclick = () => { addAndOpenTab(tabObj.code, tabObj.name, tabObj.partNum); };
                 container.appendChild(tab);
             });
         }
@@ -359,7 +317,6 @@
             return value;
         }
 
-        // A4 1~2페이지 분량의 심층 기업 분석 보고서 생성 함수
         function generateCorporateReport() {
             const currentTab = openedTabs.find(t => t.code === activeTabCode);
             const reportContainer = document.getElementById("reportContainer");
@@ -407,7 +364,7 @@
                 <div class="report-row"><span>• 분석 대상 기간</span> <strong>${firstYear}년 ~ ${lastYear}년 (${years.length}개년 누적)</strong></div>
                 <div class="report-row"><span>• 기초 vs 기말 매출액</span> <strong>${firstRev.toLocaleString()}억원 ➔ ${lastRev.toLocaleString()}억원 (${revGrowth >= 0 ? '+' : ''}${revGrowth}%)</strong></div>
                 <div class="report-text">
-                    대상 기업인 <strong>${name}</strong>은(는) 지난 ${years.length}개년 동안 꾸준한 사업 포트폴리오 조정을 거치며 외형 성장을 도모해 왔습니다. 특히 매출액 추이를 살펴보면 특정 전방 산업의 업황 사이클에 연동되면서도 장기적인 우상향 기조를 구축하려는 노력이 관측됩니다.
+                    대상 기업인 <strong>${name}</strong>은(는) 지난 ${years.length}개년 동안 꾸준한 사업 포트폴리오 조정을 거치며 외형 성장을 도모해 왔습니다. 매출액 추이를 살펴보면 장기적인 우상향 기조를 구축하려는 노력이 관측됩니다.
                 </div>
 
                 <div class="report-section-title">2. 영업이익 변동성 및 핵심 수익성 진단</div>
@@ -416,18 +373,18 @@
                 <div class="report-row"><span>• 최근 결산 기준 영업이익률</span> <strong>${recentMargin}%</strong></div>
                 <div class="report-row"><span>• 최근 결산 기준 ROE (자기자본이익률)</span> <strong>${recentRoe}%</strong></div>
                 <div class="report-text">
-                    영업이익 지표는 기업의 본업 경쟁력을 보여주는 핵심 척도입니다. ${maxOpYear}년에는 호황기 진입 및 마진율 개선으로 최대 실적을 달성한 반면, ${minOpYear}년에는 원가 상승, 수요 정체 혹은 일시적 충격으로 인해 수익성이 크게 흔들리는 변동성을 보였습니다. 최근 결산 기준 영업이익률 <strong>${recentMargin}%</strong> 및 ROE <strong>${recentRoe}%</strong> 수준은 동종 업계 내에서의 수익 창출력을 가늠하는 중요한 지표가 됩니다.
+                    영업이익 지표는 기업의 본업 경쟁력을 보여주는 핵심 척도입니다. ${maxOpYear}년 호황기 마진율 개선으로 최대 실적을 달성한 반면, ${minOpYear}년에는 원가 상승 및 수요 정체로 수익성이 흔들렸습니다. 최근 기준 영업이익률 <strong>${recentMargin}%</strong> 및 ROE <strong>${recentRoe}%</strong> 수준을 유지하고 있습니다.
                 </div>
 
                 <div class="report-section-title">3. 재무 건전성 및 안정성 평가</div>
                 <div class="report-row"><span>• 최근 결산 부채비율</span> <strong>${recentDebtRatio}%</strong></div>
                 <div class="report-text">
-                    재무 안정성 측면에서 부채비율 <strong>${recentDebtRatio}%</strong>는 기업이 외부 차입금이나 재무적 위험에 얼마나 유연하게 대응할 수 있는지를 보여줍니다. 자본총계 대비 부채 규모가 안정적으로 통제되고 있는지 지속적인 모니터링이 필요하며, 현금흐름 창출력을 바탕으로 한 재무 구조 개선 추이를 함께 살펴야 합니다.
+                    재무 안정성 측면에서 부채비율 <strong>${recentDebtRatio}%</strong>는 외부 차입금이나 재무적 위험에 대한 대응력을 보여줍니다. 자본총계 대비 부채 규모의 안정적 관리가 지속적으로 요구됩니다.
                 </div>
 
                 <div class="report-section-title">4. 종합 의견 및 향후 전망 시사점</div>
                 <div class="report-text">
-                    본 10개년 재무 데이터 분석 결과, <strong>${name}</strong>은(는) 과거 실적 사이클의 변동 구간(${minOpYear}년 등)을 지나며 체질 개선을 거쳐왔습니다. 향후 투자 및 경영 분석 관점에서는 1) 주력 사업 부문의 매출 성장 가속화 여부, 2) 원가 절감 및 믹스 개선을 통한 영업이익률 방어력, 3) 재무 건전성 유지 여부가 핵심 성공 요인이 될 것입니다.
+                    본 10개년 재무 데이터 분석 결과, <strong>${name}</strong>은(는) 과거 실적 변동 구간을 거쳐 체질 개선을 이루어왔습니다. 향후 주력 사업 부문의 매출 성장 가속화와 원가 절감 능력이 핵심 성공 요인이 될 것입니다.
                 </div>
             `;
 
@@ -435,15 +392,15 @@
             currentTab.reportCache = reportHTML;
         }
 
-        function selectAndRenderCorp(selectedCorpCode, selectedCorpName, aliases = []) {
+        function selectAndRenderCorpFromPart(selectedCorpCode, selectedCorpName, partDataArray) {
             const tableBody = document.getElementById("tableBody");
             document.getElementById("tableReportTitle").innerText = `[${selectedCorpName}] 10개년 재무제표 원자료 테이블`;
 
-            const corpRows = globalFinancialData.filter(item => {
+            const corpRows = partDataArray.filter(item => {
                 const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
                 const name = item.corp_name || item.회사명 || item.stock_name || item.name;
                 if (code && String(code).trim() === String(selectedCorpCode)) return true;
-                if (name && (String(name).trim() === selectedCorpName || aliases.includes(String(name).trim()))) return true;
+                if (name && String(name).trim() === selectedCorpName) return true;
                 return false;
             });
             
@@ -523,7 +480,6 @@
             tableBody.innerHTML = bodyHTML;
             renderAllCharts(sortedYears, accountDataMap, corpRows);
 
-            // 탭 데이터 및 캐시 관리
             const currentTab = openedTabs.find(t => t.code === selectedCorpCode);
             if (currentTab) {
                 currentTab.sortedYears = sortedYearsArr;
