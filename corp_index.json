@@ -1,0 +1,55 @@
+import json
+import os
+
+index_map = []
+total_files = 60
+
+print("corp_index.json 파일 생성 시작...")
+
+for i in range(1, total_files + 1):
+    file_name = f"corps_financials_part_{i}.json"
+    if os.path.exists(file_name):
+        try:
+            with open(file_name, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                seen_codes = set()
+                for item in data:
+                    # 기업 코드 및 기업명 필드 추출 (다양한 키 이름 대응)
+                    code = (
+                        item.get("corp_code")
+                        or item.get("회사고유번호")
+                        or item.get("stock_code")
+                        or item.get("code")
+                    )
+                    name = (
+                        item.get("corp_name")
+                        or item.get("회사명")
+                        or item.get("stock_name")
+                        or item.get("name")
+                    )
+
+                    if code and name:
+                        code_str = str(code).strip()
+                        if code_str not in seen_codes:
+                            seen_codes.add(code_str)
+                            index_map.append(
+                                {
+                                    "code": code_str,
+                                    "name": str(name).strip(),
+                                    "part": i,  # 현재 파일의 파트 번호(1~60)가 올바르게 기록됨
+                                }
+                            )
+            print(f"[완료] {file_name} 처리 완료 (누적 기업 수: {len(index_map)})")
+        except Exception as e:
+            print(f"[오류] {file_name} 읽기 실패: {e}")
+    else:
+        print(f"[생략] {file_name} 파일이 존재하지 않습니다.")
+
+# 최종 초경량 인덱스 파일 저장
+output_filename = "corp_index.json"
+with open(output_filename, "w", encoding="utf-8") as f:
+    json.dump(index_map, f, ensure_ascii=False, indent=2)
+
+print(
+    f"\n모든 작업 완료! '{output_filename}' 파일이 생성되었습니다. 총 기업 수: {len(index_map)}개"
+)
