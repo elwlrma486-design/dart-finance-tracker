@@ -71,7 +71,7 @@
         tr:nth-child(even) { background-color: #172033; }
         .no-data { text-align: center; padding: 40px; color: #64748b; font-size: 14px; }
 
-        /* A4 PDF 출력 전용 스타일 */
+        /* A4 PDF 출력 전용 스타일 (인쇄 시 자동 적응) */
         @media print {
             body { background: white !important; color: black !important; padding: 0 !important; }
             #loadingOverlay, header, .control-panel, .tabs-container, .charts-grid, .btn-group, #tableReportTitle, .table-responsive { display: none !important; }
@@ -203,9 +203,12 @@
                     const elapsedSec = (Date.now() - startTime) / 1000;
                     document.getElementById("loadingSubText").innerText = `데이터 안전 동기화 중 (${partIndex}/${estimatedTotalParts} 파트) · ${Math.floor(elapsedSec)}초 경과`;
 
-                    // [핵심] 모바일 기기의 무한 로딩/메모리 초과(OOM Crash)를 방지하는 비동기 휴식(yield)
-                    if (partIndex % 3 === 0 || isMobile) {
-                        await new Promise(resolve => setTimeout(resolve, 15));
+                    // [핵심] 모바일 기기의 무한 새로고침(RAM 초과 OOM Crash)을 완벽 방지하기 위해 
+                    // 로딩 루프 중간마다 쓰레기 데이터 정리(Garbage Collection) 비동기 휴식 시간(yield)을 부여합니다.
+                    if (isMobile) {
+                        await new Promise(resolve => setTimeout(resolve, 35)); // 모바일 35ms 휴식
+                    } else if (partIndex % 4 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 15)); // PC 15ms 휴식
                     }
 
                     partIndex++;
@@ -388,7 +391,7 @@
             return value;
         }
 
-        // [확장 2] A4 2페이지 분량의 초정밀 기업 심층 분석 보고서 생성 함수
+        // A4 2페이지 분량의 초정밀 기업 심층 분석 보고서 생성 함수
         function generateCorporateReport() {
             const currentTab = openedTabs.find(t => t.code === activeTabCode);
             const reportContainer = document.getElementById("reportContainer");
@@ -412,7 +415,7 @@
             const lastRev = revs[revs.length - 1] || 0;
             const totalYears = years.length;
             
-            // CAGR (연평균 매출 성장률) 계산
+            // 연평균 매출 성장률 (CAGR) 계산
             let cagr = 0;
             if (firstRev > 0 && lastRev > 0 && totalYears > 1) {
                 cagr = ((Math.pow(lastRev / firstRev, 1 / (totalYears - 1)) - 1) * 100).toFixed(1);
@@ -494,14 +497,14 @@
             currentTab.reportCache = reportHTML;
         }
 
-        // [확장 3] 브라우저 인쇄 모듈을 활용한 PDF 다운로드 기능
+        // 브라우저 인쇄 모듈을 활용한 PDF 다운로드 기능
         function downloadReportPDF() {
             const currentTab = openedTabs.find(t => t.code === activeTabCode);
             if (!currentTab || !currentTab.reportCache) {
                 alert("먼저 [심층 분석 보고서 생성] 버튼을 눌러 보고서를 생성해 주세요.");
                 return;
             }
-            // 브라우저의 PDF 저장 / 인쇄 모달 호출
+            // 브라우저의 PDF 저장 / 인쇄 창 호출
             window.print();
         }
 
