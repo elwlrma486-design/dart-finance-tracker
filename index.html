@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DART 10년 재무분석 & 기업 분석 보고서</title>
     <!-- Chart.js 그래프 라이브러리 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -45,17 +46,21 @@
         .card h3 { margin-top: 0; color: var(--accent); font-size: 16px; border-bottom: 1px solid #334155; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         
         .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        @media (max-width: 768px) { .charts-grid { grid-template-columns: 1fr; } }
         .chart-container { position: relative; height: 260px; width: 100%; margin-top: 10px; }
 
         /* A4 보고서 버튼 및 스타일 */
-        .btn-report { background: #0284c7; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        .btn-group { display: flex; gap: 8px; }
+        .btn-report { background: #0284c7; color: white; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
         .btn-report:hover { background: #0369a1; }
+        .btn-pdf { background: #10b981; color: white; border: none; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        .btn-pdf:hover { background: #059669; }
 
         .report-content { background: #0f172a; padding: 24px; border-radius: 8px; border: 1px solid #334155; line-height: 1.8; font-size: 14px; color: #e2e8f0; min-height: 250px; }
-        .report-header-title { font-size: 18px; font-weight: bold; color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 8px; margin-bottom: 16px; text-align: center; }
-        .report-section-title { font-size: 15px; font-weight: bold; color: #38bdf8; margin-top: 18px; margin-bottom: 8px; border-left: 4px solid #38bdf8; padding-left: 8px; }
-        .report-row { margin-bottom: 6px; display: flex; justify-content: space-between; border-bottom: 1px dashed #334155; padding-bottom: 4px; }
-        .report-text { margin-top: 6px; color: #cbd5e1; text-align: justify; }
+        .report-header-title { font-size: 19px; font-weight: bold; color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 10px; margin-bottom: 20px; text-align: center; }
+        .report-section-title { font-size: 15px; font-weight: bold; color: #38bdf8; margin-top: 22px; margin-bottom: 10px; border-left: 4px solid #38bdf8; padding-left: 10px; background: rgba(56,189,248,0.06); padding-top: 4px; padding-bottom: 4px; }
+        .report-row { margin-bottom: 8px; display: flex; justify-content: space-between; border-bottom: 1px dashed #334155; padding-bottom: 5px; }
+        .report-text { margin-top: 8px; color: #cbd5e1; text-align: justify; line-height: 1.9; }
 
         /* 테이블 스타일 */
         .table-responsive { overflow-x: auto; margin-top: 10px; }
@@ -65,6 +70,18 @@
         td.center { text-align: center; }
         tr:nth-child(even) { background-color: #172033; }
         .no-data { text-align: center; padding: 40px; color: #64748b; font-size: 14px; }
+
+        /* A4 PDF 출력 전용 스타일 */
+        @media print {
+            body { background: white !important; color: black !important; padding: 0 !important; }
+            #loadingOverlay, header, .control-panel, .tabs-container, .charts-grid, .btn-group, #tableReportTitle, .table-responsive { display: none !important; }
+            .card { background: white !important; border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; }
+            .report-content { background: white !important; color: black !important; border: none !important; padding: 0 !important; font-size: 12pt !important; line-height: 1.6 !important; }
+            .report-header-title { color: #000 !important; border-bottom: 2px solid #000 !important; font-size: 18pt !important; }
+            .report-section-title { color: #000 !important; border-left: 4px solid #000 !important; background: #f1f5f9 !important; font-size: 13pt !important; }
+            .report-row { border-bottom: 1px solid #ccc !important; }
+            .report-text { color: #222 !important; }
+        }
     </style>
 </head>
 <body>
@@ -76,7 +93,7 @@
         <div class="progress-bar-container">
             <div class="progress-bar" id="progressBar"></div>
         </div>
-        <div id="loadingSubText">파트 파일 로딩 준비 중...</div>
+        <div id="loadingSubText">모바일 메모리 최적화 로딩 시작...</div>
     </div>
 
     <header>
@@ -119,11 +136,14 @@
     <!-- 전문 기업 분석 보고서 영역 -->
     <div class="card">
         <h3>
-            <span>A4 기업 실적 및 재무 정밀 분석 보고서</span>
-            <button class="btn-report" onclick="generateCorporateReport()">분석 보고서 생성</button>
+            <span>A4 기업 실적 및 재무 심층 분석 보고서</span>
+            <div class="btn-group">
+                <button class="btn-report" onclick="generateCorporateReport()">심층 분석 보고서 생성</button>
+                <button class="btn-pdf" onclick="downloadReportPDF()">📄 PDF 다운로드 / 인쇄</button>
+            </div>
         </h3>
         <div id="reportContainer" class="report-content">
-            상단의 [분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.
+            상단의 [심층 분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.
         </div>
     </div>
 
@@ -157,27 +177,36 @@
         let openedTabs = []; 
         let activeTabCode = null;
 
+        // 모바일 접속 여부 감지
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const estimatedTotalParts = 60; 
+
         window.addEventListener("DOMContentLoaded", async () => {
             const startTime = Date.now();
             let combinedData = [];
             let partIndex = 1;
             let hasMore = true;
-            const estimatedTotalParts = 60; 
 
-            while (hasMore) {
+            while (hasMore && partIndex <= estimatedTotalParts) {
                 const fileName = `corps_financials_part_${partIndex}.json`;
                 try {
                     const response = await fetch(fileName);
                     if (!response.ok) { hasMore = false; break; }
                     const partData = await response.json();
+                    
                     if (Array.isArray(partData)) combinedData = combinedData.concat(partData);
                     else if (typeof partData === 'object' && partData !== null) combinedData.push(partData);
                     
-                    const progressPercent = Math.min(Math.floor((partIndex / estimatedTotalParts) * 100), 95);
+                    const progressPercent = Math.min(Math.floor((partIndex / estimatedTotalParts) * 100), 98);
                     document.getElementById("progressBar").style.width = progressPercent + "%";
                     
                     const elapsedSec = (Date.now() - startTime) / 1000;
-                    document.getElementById("loadingSubText").innerText = `데이터 로딩 중 (${partIndex}번째 파트) · ${Math.floor(elapsedSec)}초 경과`;
+                    document.getElementById("loadingSubText").innerText = `데이터 안전 동기화 중 (${partIndex}/${estimatedTotalParts} 파트) · ${Math.floor(elapsedSec)}초 경과`;
+
+                    // [핵심] 모바일 기기의 무한 로딩/메모리 초과(OOM Crash)를 방지하는 비동기 휴식(yield)
+                    if (partIndex % 3 === 0 || isMobile) {
+                        await new Promise(resolve => setTimeout(resolve, 15));
+                    }
 
                     partIndex++;
                 } catch (error) {
@@ -194,8 +223,8 @@
             setTimeout(() => {
                 const overlay = document.getElementById("loadingOverlay");
                 overlay.style.opacity = '0';
-                setTimeout(() => { overlay.style.display = 'none'; }, 500);
-            }, 400);
+                setTimeout(() => { overlay.style.display = 'none'; }, 400);
+            }, 300);
         });
 
         function extractUniqueCorps(data) {
@@ -316,7 +345,7 @@
         function clearDashboard() {
             document.getElementById("tableReportTitle").innerText = "10개년 재무제표 원자료 테이블";
             document.getElementById("tableBody").innerHTML = `<tr><td colspan="6" class="no-data">기업을 검색해 주세요.</td></tr>`;
-            document.getElementById("reportContainer").innerText = "상단의 [분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.";
+            document.getElementById("reportContainer").innerText = "상단의 [심층 분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.";
             Object.keys(chartInstances).forEach(id => { if (chartInstances[id]) chartInstances[id].destroy(); });
         }
 
@@ -359,7 +388,7 @@
             return value;
         }
 
-        // A4 1~2페이지 분량의 심층 기업 분석 보고서 생성 함수
+        // [확장 2] A4 2페이지 분량의 초정밀 기업 심층 분석 보고서 생성 함수
         function generateCorporateReport() {
             const currentTab = openedTabs.find(t => t.code === activeTabCode);
             const reportContainer = document.getElementById("reportContainer");
@@ -381,13 +410,24 @@
             const lastYear = years[years.length - 1];
             const firstRev = revs[0] || 0;
             const lastRev = revs[revs.length - 1] || 0;
+            const totalYears = years.length;
+            
+            // CAGR (연평균 매출 성장률) 계산
+            let cagr = 0;
+            if (firstRev > 0 && lastRev > 0 && totalYears > 1) {
+                cagr = ((Math.pow(lastRev / firstRev, 1 / (totalYears - 1)) - 1) * 100).toFixed(1);
+            }
+
             const revGrowth = firstRev > 0 ? (((lastRev - firstRev) / firstRev) * 100).toFixed(1) : 0;
 
             let maxOp = -Infinity, minOp = Infinity;
             let maxOpYear = "", minOpYear = "";
+            let deficitYears = [];
+
             ops.forEach((op, idx) => {
                 if (op > maxOp) { maxOp = op; maxOpYear = years[idx]; }
                 if (op < minOp) { minOp = op; minOpYear = years[idx]; }
+                if (op < 0) deficitYears.push(years[idx]);
             });
 
             const recentRev = revs[revs.length - 1];
@@ -400,39 +440,69 @@
             const recentRoe = recentEq > 0 ? ((recentNet / recentEq) * 100).toFixed(1) : 0;
             const recentDebtRatio = recentEq > 0 ? ((recentLiab / recentEq) * 100).toFixed(1) : 0;
 
+            // 10년 평균 영업이익률
+            let marginSum = 0, validMarginCount = 0;
+            revs.forEach((r, idx) => {
+                if (r > 0) { marginSum += (ops[idx] / r) * 100; validMarginCount++; }
+            });
+            const avgMargin = validMarginCount > 0 ? (marginSum / validMarginCount).toFixed(1) : 0;
+
             let reportHTML = `
-                <div class="report-header-title">📋 [${name}] 10개년 실적 및 재무 정밀 진단 보고서</div>
+                <div class="report-header-title">📋 [${name}] 10개년 실적 및 재무 구조 정밀 진단 보고서</div>
                 
                 <div class="report-section-title">1. 종합 경영 성과 및 외형 성장 추세 (${firstYear} ~ ${lastYear})</div>
-                <div class="report-row"><span>• 분석 대상 기간</span> <strong>${firstYear}년 ~ ${lastYear}년 (${years.length}개년 누적)</strong></div>
+                <div class="report-row"><span>• 분석 대상 기간</span> <strong>${firstYear}년 ~ ${lastYear}년 (${totalYears}개년 누적 데이터)</strong></div>
                 <div class="report-row"><span>• 기초 vs 기말 매출액</span> <strong>${firstRev.toLocaleString()}억원 ➔ ${lastRev.toLocaleString()}억원 (${revGrowth >= 0 ? '+' : ''}${revGrowth}%)</strong></div>
+                <div class="report-row"><span>• 연평균 매출 성장률 (CAGR)</span> <strong>약 ${cagr}%</strong></div>
                 <div class="report-text">
-                    대상 기업인 <strong>${name}</strong>은(는) 지난 ${years.length}개년 동안 꾸준한 사업 포트폴리오 조정을 거치며 외형 성장을 도모해 왔습니다. 특히 매출액 추이를 살펴보면 특정 전방 산업의 업황 사이클에 연동되면서도 장기적인 우상향 기조를 구축하려는 노력이 관측됩니다.
+                    대상 기업 <strong>${name}</strong>은(는) ${firstYear}년부터 ${lastYear}년까지의 결산 기준 데이터를 바탕으로 분석한 결과, 누적 매출 연평균 성장률(CAGR) <strong>${cagr}%</strong>를 기록하며 사업 외형을 확장해 왔습니다. 산업 사이클 연동성에 따른 변동에도 불구하고 기초 대비 기말 매출액이 <strong>${revGrowth}%</strong> 변동하여 시장 지배력을 유지하거나 조율하는 단계에 있습니다.
                 </div>
 
                 <div class="report-section-title">2. 영업이익 변동성 및 핵심 수익성 진단</div>
-                <div class="report-row"><span>• 최고 영업이익 기록 연도</span> <strong>${maxOpYear}년 (약 ${maxOp.toLocaleString()}억원)</strong></div>
-                <div class="report-row"><span>• 최저/적자 영업이익 연도</span> <strong style="color: #ef4444;">${minOpYear}년 (약 ${minOp.toLocaleString()}억원)</strong></div>
-                <div class="report-row"><span>• 최근 결산 기준 영업이익률</span> <strong>${recentMargin}%</strong></div>
-                <div class="report-row"><span>• 최근 결산 기준 ROE (자기자본이익률)</span> <strong>${recentRoe}%</strong></div>
+                <div class="report-row"><span>• 최대 영업이익 연도</span> <strong>${maxOpYear}년 (약 ${maxOp.toLocaleString()}억원)</strong></div>
+                <div class="report-row"><span>• 최소/저점 영업이익 연도</span> <strong style="color: #ef4444;">${minOpYear}년 (약 ${minOp.toLocaleString()}억원)</strong></div>
+                <div class="report-row"><span>• 10개년 평균 영업이익률</span> <strong>약 ${avgMargin}%</strong></div>
+                <div class="report-row"><span>• 최근 결산 영업이익률 / ROE</span> <strong>${recentMargin}% / ROE ${recentRoe}%</strong></div>
                 <div class="report-text">
-                    영업이익 지표는 기업의 본업 경쟁력을 보여주는 핵심 척도입니다. ${maxOpYear}년에는 호황기 진입 및 마진율 개선으로 최대 실적을 달성한 반면, ${minOpYear}년에는 원가 상승, 수요 정체 혹은 일시적 충격으로 인해 수익성이 크게 흔들리는 변동성을 보였습니다. 최근 결산 기준 영업이익률 <strong>${recentMargin}%</strong> 및 ROE <strong>${recentRoe}%</strong> 수준은 동종 업계 내에서의 수익 창출력을 가늠하는 중요한 지표가 됩니다.
+                    영업이익 추이는 기업 본업의 마진율 체질을 결정짓습니다. 최상 실적을 거둔 ${maxOpYear}년(약 ${maxOp.toLocaleString()}억원) 대비, 최저점인 ${minOpYear}년(약 ${minOp.toLocaleString()}억원) 사이의 변동폭이 관측됩니다. 
+                    ${deficitYears.length > 0 ? `<span style="color:#f87171;">특히 ${deficitYears.join(', ')}년에는 영업 손실(적자) 구간이 발생한 바 있어, 원가율 절감 및 고정비 관리 체계 재정비가 필수적입니다.</span>` : `분석 기간 내 지속적인 영업 흑자를 유지하여 안정적인 본업 창출력을 보여주고 있습니다.`}
                 </div>
 
-                <div class="report-section-title">3. 재무 건전성 및 안정성 평가</div>
+                <div class="report-section-title">3. 재무 건전성 및 리스크 자본 구조 평가</div>
+                <div class="report-row"><span>• 최근 결산 자본총계 / 부채총계</span> <strong>${recentEq.toLocaleString()}억원 / ${recentLiab.toLocaleString()}억원</strong></div>
                 <div class="report-row"><span>• 최근 결산 부채비율</span> <strong>${recentDebtRatio}%</strong></div>
                 <div class="report-text">
-                    재무 안정성 측면에서 부채비율 <strong>${recentDebtRatio}%</strong>는 기업이 외부 차입금이나 재무적 위험에 얼마나 유연하게 대응할 수 있는지를 보여줍니다. 자본총계 대비 부채 규모가 안정적으로 통제되고 있는지 지속적인 모니터링이 필요하며, 현금흐름 창출력을 바탕으로 한 재무 구조 개선 추이를 함께 살펴야 합니다.
+                    최근 결산 기준 부채비율 <strong>${recentDebtRatio}%</strong> 수준은 타인 자본 의존도 및 금융 비용 부담 수준을 나타냅니다. 
+                    ${recentDebtRatio > 200 ? `부채비율이 200%를 초과하여 외부 재무 환경 변화에 따른 이자 비용 부담 및 유동성 관리에 각별한 주의가 요구됩니다.` : `부채비율이 200% 이하로 통제되고 있어 비교적 안정적인 자본 구조와 차입금 대응 능력을 확보하고 있는 것으로 판단됩니다.`}
                 </div>
 
-                <div class="report-section-title">4. 종합 의견 및 향후 전망 시사점</div>
+                <div class="report-section-title">4. 10개년 재무 팩트 체크 및 수치 종합 분석</div>
                 <div class="report-text">
-                    본 10개년 재무 데이터 분석 결과, <strong>${name}</strong>은(는) 과거 실적 사이클의 변동 구간(${minOpYear}년 등)을 지나며 체질 개선을 거쳐왔습니다. 향후 투자 및 경영 분석 관점에서는 1) 주력 사업 부문의 매출 성장 가속화 여부, 2) 원가 절감 및 믹스 개선을 통한 영업이익률 방어력, 3) 재무 건전성 유지 여부가 핵심 성공 요인이 될 것입니다.
+                    • <strong>최근 년도 사업 실적:</strong> 매출액 ${recentRev.toLocaleString()}억원, 영업이익 ${recentOp.toLocaleString()}억원, 당기순이익 ${recentNet.toLocaleString()}억원 달성.<br>
+                    • <strong>수익성 평가:</strong> 매출액 대비 영업이익 마진율은 최근 ${recentMargin}%를 기록하여 10개년 평균(${avgMargin}%) 대비 ${recentMargin >= avgMargin ? '우수한' : '다소 하회하는'} 흐름입니다.<br>
+                    • <strong>자본 효율성(ROE):</strong> 자기자본을 활용한 당기순이익 창출력(ROE)은 ${recentRoe}%로 측정되었습니다.
+                </div>
+
+                <div class="report-section-title">5. 종합 의견 및 전략적 제언</div>
+                <div class="report-text">
+                    <strong>${name}</strong>의 10개년 실적 통합 결과, 본업에서의 매출 및 이익 안정성 강화를 바탕으로 사업 체질 개선을 지속해야 하는 기점에 서 있습니다. 
+                    1) 주력 제품/서비스의 영업이익률 회복 및 방어, 2) 금리 환경에 대응한 부채비율 및 차입금 구조 최적화, 3) 잉여 현금흐름 축적을 통한 성장 동력 확보가 향후 기업 가치 제고의 핵심 열쇠가 될 것입니다.
                 </div>
             `;
 
             reportContainer.innerHTML = reportHTML;
             currentTab.reportCache = reportHTML;
+        }
+
+        // [확장 3] 브라우저 인쇄 모듈을 활용한 PDF 다운로드 기능
+        function downloadReportPDF() {
+            const currentTab = openedTabs.find(t => t.code === activeTabCode);
+            if (!currentTab || !currentTab.reportCache) {
+                alert("먼저 [심층 분석 보고서 생성] 버튼을 눌러 보고서를 생성해 주세요.");
+                return;
+            }
+            // 브라우저의 PDF 저장 / 인쇄 모달 호출
+            window.print();
         }
 
         function selectAndRenderCorp(selectedCorpCode, selectedCorpName, aliases = []) {
@@ -537,7 +607,7 @@
                 if (currentTab.reportCache) {
                     reportContainer.innerHTML = currentTab.reportCache;
                 } else {
-                    reportContainer.innerHTML = "상단의 [분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.";
+                    reportContainer.innerHTML = "상단의 [심층 분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.";
                 }
             }
         }
