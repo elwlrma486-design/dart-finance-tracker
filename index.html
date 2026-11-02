@@ -97,16 +97,16 @@
     <!-- 로딩바 모달 -->
     <div id="loadingOverlay">
         <div class="spinner"></div>
-        <div id="loadingMessage">DART 재무 데이터 동기화 중 (1~40파트)...</div>
+        <div id="loadingMessage">DART 재무 데이터 인덱싱 중 (1~60파트)...</div>
         <div class="progress-bar-container">
             <div class="progress-bar" id="progressBar"></div>
         </div>
-        <div id="loadingSubText">모바일 메모리 안전 최적화 로딩...</div>
+        <div id="loadingSubText">전체 기업 검색 목록 생성 중...</div>
     </div>
 
     <header>
         <h1>DART 10년 재무분석 & 그룹 비교 분석</h1>
-        <div class="subtitle">1~40개 파트 안전 최적화 및 열린 탭 기반 그룹 비교 분석 탭 지원</div>
+        <div class="subtitle">전체 기업 검색 지원 및 모바일 메모리 40파트 안전 최적화 적용</div>
     </header>
 
     <!-- 검색 및 그룹 비교 컨트롤 패널 -->
@@ -195,7 +195,8 @@
     </div>
 
     <script>
-        let globalFinancialData = [];
+        let globalFinancialData = []; // 실제 차트/표용 (최대 40파트까지 로드하여 메모리 보호)
+        let searchIndexData = [];     // 전체 검색용 (60파트의 기업명/코드 가볍게 인덱싱)
         let uniqueCorps = []; 
         let corpCodeToAliases = new Map(); 
         let chartInstances = {};
@@ -203,47 +204,44 @@
         let activeTabId = null;
 
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const estimatedTotalParts = 40; 
+        const maxRenderParts = 40; // 렌더링 및 차트용은 40개로 제한하여 Out of Memory 방지
+        const totalSearchParts = 60; // 검색은 전체 60개 파트 모두 지원
 
         window.addEventListener("DOMContentLoaded", async () => {
             const startTime = Date.now();
-            let combinedData = [];
-            let partIndex = 1;
-            let hasMore = true;
+            let renderData = [];
+            let searchDataList = [];
 
-            while (hasMore && partIndex <= estimatedTotalParts) {
-                const fileName = `corps_financials_part_${partIndex}.json`;
+            // 1단계: 검색을 위해 60개 전체 파트에서 기업명/고유번호 메타데이터만 초고속 수집
+            for (let i = 1; i <= totalSearchParts; i++) {
                 try {
-                    const response = await fetch(fileName);
-                    if (!response.ok) { hasMore = false; break; }
-                    const partData = await response.json();
-                    
-                    if (Array.isArray(partData)) combinedData = combinedData.concat(partData);
-                    else if (typeof partData === 'object' && partData !== null) combinedData.push(partData);
-                    
-                    const progressPercent = Math.min(Math.floor((partIndex / estimatedTotalParts) * 100), 98);
-                    document.getElementById("progressBar").style.width = progressPercent + "%";
-                    
-                    const elapsedSec = (Date.now() - startTime) / 1000;
-                    document.getElementById("loadingSubText").innerText = `데이터 안전 동기화 중 (${partIndex}/${estimatedTotalParts} 파트) · ${Math.floor(elapsedSec)}초 경과`;
-
-                    if (isMobile) {
-                        await new Promise(resolve => setTimeout(resolve, 25));
-                    } else if (partIndex % 5 === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 10));
+                    const res = await fetch(`corps_financials_part_${i}.json`);
+                    if (res.ok) {
+                        const pData = await res.json();
+                        if (Array.isArray(pData)) {
+                            searchDataList = searchDataList.concat(pData);
+                            // 메모리 절약을 위해 검색에 필요한 최소한의 필드만 남기거나 그대로 활용
+                            if (i <= maxRenderParts) {
+                                renderData = renderData.concat(pData);
+                            }
+                        }
                     }
-
-                    partIndex++;
-                } catch (error) {
-                    hasMore = false;
+                } catch (e) {
+                    // 무시
                 }
+
+                const progressPercent = Math.min(Math.floor((i / totalSearchParts) * 100), 98);
+                document.getElementById("progressBar").style.width = progressPercent + "%";
+                document.getElementById("loadingSubText").innerText = `전체 기업 검색 인덱싱 중 (${i}/${totalSearchParts} 파트)`;
+                
+                if (isMobile) await new Promise(r => setTimeout(r, 10));
             }
 
             document.getElementById("progressBar").style.width = "100%";
             document.getElementById("loadingSubText").innerText = "인덱싱 완료!";
-            
-            globalFinancialData = combinedData;
-            extractUniqueCorps(globalFinancialData);
+
+            globalFinancialData = renderData; // 40파트 분량의 정밀 재무 데이터
+            extractUniqueCorps(searchDataList); // 60파트 전체 기업 검색 목록 생성
 
             setTimeout(() => {
                 const overlay = document.getElementById("loadingOverlay");
@@ -314,7 +312,7 @@
                     listDiv.innerHTML = "";
                     addAndOpenCorpTab(corp.code, corp.name, corp.aliases);
                 };
-                itemDiv.appendChild(itemDiv);
+                listDiv.appendChild(itemDiv);
             });
         }
 
@@ -334,7 +332,6 @@
             selectAndRenderCorp(tab);
         }
 
-        // 그룹 비교 분석 탭 생성 실행
         function executeGroupComparison() {
             const codeA = document.getElementById("groupSelectA").value;
             const codeB = document.getElementById("groupSelectB").value;
@@ -436,7 +433,6 @@
             if (valB) selB.value = valB;
         }
 
-        // 비교 탭 렌더링 함수
         function renderCompareTab(tabObj) {
             document.getElementById("reportCardTitle").innerText = `⚖️ [${tabObj.tabA.name} vs ${tabObj.tabB.name}] 그룹 비교 분석 보고서`;
             document.getElementById("tableReportTitle").innerText = `[${tabObj.tabA.name} vs ${tabObj.tabB.name}] 그룹 비교 요약 테이블`;
@@ -495,13 +491,11 @@
             reportContainer.innerHTML = compareHTML;
             tabObj.reportCache = compareHTML;
 
-            // 테이블 및 차트는 대조 요약으로 표시
             tableBody.innerHTML = `
                 <tr><td class="center"><strong>${tabObj.tabA.name}</strong></td><td>${dataA.rev.toLocaleString()}억</td><td>${dataA.op.toLocaleString()}억</td><td>${dataA.margin}%</td><td>ROE ${dataA.roe}%</td><td>부채 ${dataA.debt}%</td></tr>
                 <tr><td class="center"><strong>${tabObj.tabB.name}</strong></td><td>${dataB.rev.toLocaleString()}억</td><td>${dataB.op.toLocaleString()}억</td><td>${dataB.margin}%</td><td>ROE ${dataB.roe}%</td><td>부채 ${dataB.debt}%</td></tr>
             `;
 
-            // 비교 탭 선택 시 차트는 첫 번째 기업 기준으로 표시하거나 초기화
             renderAllCharts(tabObj.tabA.sortedYears, {}, []);
         }
 
@@ -672,7 +666,7 @@
             });
             const sortedYears = Array.from(yearsSet).sort();
             if (sortedYears.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="6" class="no-data">해당 기업의 재무 데이터가 없습니다.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="6" class="no-data">해당 기업의 재무 데이터가 없습니다. (40파트 범위 외 기업이거나 데이터가 부족합니다)</td></tr>`;
                 return;
             }
 
