@@ -41,10 +41,11 @@
         .autocomplete-item { padding: 10px 14px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #334155; color: #f8fafc; }
         .autocomplete-item:hover { background-color: #334155; color: var(--accent); font-weight: bold; }
 
-        /* 기업 탭 바 영역 */
+        /* 기업 및 비교 탭 바 영역 */
         .tabs-container { display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 5px; }
-        .tab-item { background: #1e293b; padding: 8px 16px; border-radius: 6px 6px 0 0; font-size: 13px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 10px; color: #94a3b8; border: 1px solid #334155; border-bottom: none; }
+        .tab-item { background: #1e293b; padding: 8px 16px; border-radius: 6px 6px 0 0; font-size: 13px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 10px; color: #94a3b8; border: 1px solid #334155; border-bottom: none; white-space: nowrap; }
         .tab-item.active { background: #0f172a; color: var(--accent); border-top: 3px solid var(--accent); }
+        .tab-item.compare-tab { border-top-color: #8b5cf6; color: #a78bfa; }
         .tab-close { font-size: 14px; color: #64748b; cursor: pointer; border-radius: 50%; padding: 0 4px; }
         .tab-close:hover { background: #334155; color: #f87171; }
 
@@ -105,7 +106,7 @@
 
     <header>
         <h1>DART 10년 재무분석 & 그룹 비교 분석</h1>
-        <div class="subtitle">1~40개 파트 안전 최적화 및 열린 탭 기반 그룹 비교 분석 지원</div>
+        <div class="subtitle">1~40개 파트 안전 최적화 및 열린 탭 기반 그룹 비교 분석 탭 지원</div>
     </header>
 
     <!-- 검색 및 그룹 비교 컨트롤 패널 -->
@@ -130,11 +131,11 @@
                     <option value="">-- 기업 선택 2 --</option>
                 </select>
             </div>
-            <button class="btn-compare" onclick="executeGroupComparison()">그룹 비교 분석 실행</button>
+            <button class="btn-compare" onclick="executeGroupComparison()">그룹 비교 분석 탭 생성</button>
         </div>
     </div>
 
-    <!-- 열린 기업 탭 바 -->
+    <!-- 열린 기업 및 비교 탭 바 -->
     <div class="tabs-container" id="tabsContainer"></div>
 
     <!-- 차트 2x2 그리드 -->
@@ -160,14 +161,14 @@
     <!-- 전문 기업 분석 보고서 영역 -->
     <div class="card">
         <h3>
-            <span>A4 기업 실적 및 재무 심층 분석 보고서</span>
+            <span id="reportCardTitle">A4 기업 실적 및 재무 심층 분석 보고서</span>
             <div class="btn-group">
                 <button class="btn-report" onclick="generateCorporateReport()">심층 분석 보고서 생성</button>
                 <button class="btn-pdf" onclick="downloadReportPDF()">📄 PDF 다운로드 / 인쇄</button>
             </div>
         </h3>
         <div id="reportContainer" class="report-content">
-            상단의 [심층 분석 보고서 생성] 버튼을 누르거나 [그룹 비교 분석]을 실행해 주세요.
+            상단의 [심층 분석 보고서 생성] 버튼을 누르거나 [그룹 비교 분석 탭 생성]을 실행해 주세요.
         </div>
     </div>
 
@@ -199,10 +200,10 @@
         let corpCodeToAliases = new Map(); 
         let chartInstances = {};
         let openedTabs = []; 
-        let activeTabCode = null;
+        let activeTabId = null;
 
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const estimatedTotalParts = 40; // [핵심 수정] 40번 파트까지만 안전 로드
+        const estimatedTotalParts = 40; 
 
         window.addEventListener("DOMContentLoaded", async () => {
             const startTime = Date.now();
@@ -311,9 +312,9 @@
                 itemDiv.onclick = () => {
                     document.getElementById("corpSearchInput").value = "";
                     listDiv.innerHTML = "";
-                    addAndOpenTab(corp.code, corp.name, corp.aliases);
+                    addAndOpenCorpTab(corp.code, corp.name, corp.aliases);
                 };
-                listDiv.appendChild(itemDiv);
+                itemDiv.appendChild(itemDiv);
             });
         }
 
@@ -321,30 +322,73 @@
             if (!e.target.closest('.search-container')) document.getElementById("autocompleteList").innerHTML = "";
         });
 
-        function addAndOpenTab(code, name, aliases) {
-            let tab = openedTabs.find(t => t.code === code);
+        function addAndOpenCorpTab(code, name, aliases) {
+            let tab = openedTabs.find(t => t.type === 'corp' && t.code === code);
             if (!tab) {
-                tab = { code, name, aliases, reportCache: null, sortedYears: [], revValues: [], opValues: [], netValues: [], eqValues: [], liabValues: [] };
+                tab = { id: 'corp_' + code, type: 'corp', code, name, aliases, reportCache: null, sortedYears: [], revValues: [], opValues: [], netValues: [], eqValues: [], liabValues: [] };
                 openedTabs.push(tab);
             }
-            activeTabCode = code;
+            activeTabId = tab.id;
             renderTabs();
-            updateGroupSelectOptions(); // 그룹 비교 드롭다운 갱신
-            selectAndRenderCorp(code, name, aliases);
+            updateGroupSelectOptions();
+            selectAndRenderCorp(tab);
         }
 
-        function closeTab(e, code) {
+        // 그룹 비교 분석 탭 생성 실행
+        function executeGroupComparison() {
+            const codeA = document.getElementById("groupSelectA").value;
+            const codeB = document.getElementById("groupSelectB").value;
+
+            if (!codeA || !codeB) {
+                alert("비교할 두 기업을 모두 선택해 주세요.");
+                return;
+            }
+            if (codeA === codeB) {
+                alert("서로 다른 두 기업을 선택해 주세요.");
+                return;
+            }
+
+            const tabA = openedTabs.find(t => t.type === 'corp' && t.code === codeA);
+            const tabB = openedTabs.find(t => t.type === 'corp' && t.code === codeB);
+
+            if (!tabA || !tabB) {
+                alert("선택한 기업의 데이터가 없습니다. 먼저 기업들을 검색하여 열어주세요.");
+                return;
+            }
+
+            const compareId = `compare_${codeA}_${codeB}`;
+            let compareTab = openedTabs.find(t => t.id === compareId);
+
+            if (!compareTab) {
+                compareTab = {
+                    id: compareId,
+                    type: 'compare',
+                    name: `⚖️ ${tabA.name} vs ${tabB.name}`,
+                    tabA,
+                    tabB,
+                    reportCache: null
+                };
+                openedTabs.push(compareTab);
+            }
+
+            activeTabId = compareId;
+            renderTabs();
+            renderCompareTab(compareTab);
+        }
+
+        function closeTab(e, tabId) {
             e.stopPropagation();
-            const index = openedTabs.findIndex(t => t.code === code);
+            const index = openedTabs.findIndex(t => t.id === tabId);
             if (index > -1) openedTabs.splice(index, 1);
 
-            if (activeTabCode === code) {
+            if (activeTabId === tabId) {
                 if (openedTabs.length > 0) {
                     const lastTab = openedTabs[openedTabs.length - 1];
-                    activeTabCode = lastTab.code;
-                    selectAndRenderCorp(lastTab.code, lastTab.name, lastTab.aliases);
+                    activeTabId = lastTab.id;
+                    if (lastTab.type === 'corp') selectAndRenderCorp(lastTab);
+                    else renderCompareTab(lastTab);
                 } else {
-                    activeTabCode = null;
+                    activeTabId = null;
                     clearDashboard();
                 }
             }
@@ -356,19 +400,24 @@
             const container = document.getElementById("tabsContainer");
             container.innerHTML = "";
             if (openedTabs.length === 0) {
-                container.innerHTML = `<span style="font-size:12px; color:#888; padding:5px;">열린 기업 탭이 없습니다.</span>`;
+                container.innerHTML = `<span style="font-size:12px; color:#888; padding:5px;">열린 탭이 없습니다.</span>`;
                 return;
             }
             openedTabs.forEach(tabObj => {
                 const tab = document.createElement("div");
-                tab.className = `tab-item ${tabObj.code === activeTabCode ? 'active' : ''}`;
-                tab.innerHTML = `<span>${tabObj.name}</span> <span class="tab-close" onclick="closeTab(event, '${tabObj.code}')">&times;</span>`;
-                tab.onclick = () => { activeTabCode = tabObj.code; renderTabs(); selectAndRenderCorp(tabObj.code, tabObj.name, tabObj.aliases); };
+                const isCompare = tabObj.type === 'compare';
+                tab.className = `tab-item ${tabObj.id === activeTabId ? 'active' : ''} ${isCompare ? 'compare-tab' : ''}`;
+                tab.innerHTML = `<span>${tabObj.name}</span> <span class="tab-close" onclick="closeTab(event, '${tabObj.id}')">&times;</span>`;
+                tab.onclick = () => {
+                    activeTabId = tabObj.id;
+                    renderTabs();
+                    if (tabObj.type === 'corp') selectAndRenderCorp(tabObj);
+                    else renderCompareTab(tabObj);
+                };
                 container.appendChild(tab);
             });
         }
 
-        // 열린 탭 목록을 그룹 비교 드롭다운 셀렉트에 반영
         function updateGroupSelectOptions() {
             const selA = document.getElementById("groupSelectA");
             const selB = document.getElementById("groupSelectB");
@@ -376,7 +425,7 @@
             const valB = selB.value;
 
             let optionsHtml = `<option value="">-- 기업 선택 --</option>`;
-            openedTabs.forEach(t => {
+            openedTabs.filter(t => t.type === 'corp').forEach(t => {
                 optionsHtml += `<option value="${t.code}">${t.name}</option>`;
             });
 
@@ -387,28 +436,13 @@
             if (valB) selB.value = valB;
         }
 
-        // 그룹 비교 분석 실행 함수
-        function executeGroupComparison() {
-            const codeA = document.getElementById("groupSelectA").value;
-            const codeB = document.getElementById("groupSelectB").value;
+        // 비교 탭 렌더링 함수
+        function renderCompareTab(tabObj) {
+            document.getElementById("reportCardTitle").innerText = `⚖️ [${tabObj.tabA.name} vs ${tabObj.tabB.name}] 그룹 비교 분석 보고서`;
+            document.getElementById("tableReportTitle").innerText = `[${tabObj.tabA.name} vs ${tabObj.tabB.name}] 그룹 비교 요약 테이블`;
+            
             const reportContainer = document.getElementById("reportContainer");
-
-            if (!codeA || !codeB) {
-                alert("비교할 두 기업을 모두 선택해 주세요.");
-                return;
-            }
-            if (codeA === codeB) {
-                alert("서로 다른 두 기업을 선택해 주세요.");
-                return;
-            }
-
-            const tabA = openedTabs.find(t => t.code === codeA);
-            const tabB = openedTabs.find(t => t.code === codeB);
-
-            if (!tabA || !tabB) {
-                alert("선택한 기업의 데이터가 없습니다.");
-                return;
-            }
+            const tableBody = document.getElementById("tableBody");
 
             const getRecent = (tab) => {
                 const len = tab.sortedYears.length;
@@ -424,50 +458,58 @@
                 return { rev, op, net, margin, roe, debt };
             };
 
-            const dataA = getRecent(tabA);
-            const dataB = getRecent(tabB);
+            const dataA = getRecent(tabObj.tabA);
+            const dataB = getRecent(tabObj.tabB);
 
             let compareHTML = `
-                <div class="report-header-title">⚖️ [${tabA.name} vs ${tabB.name}] 그룹 재무 비교 분석 보고서</div>
+                <div class="report-header-title">⚖️ [${tabObj.tabA.name} vs ${tabObj.tabB.name}] 그룹 재무 비교 분석 보고서</div>
                 
                 <div class="report-section-title">1. 최근 결산 기준 핵심 지표 대조</div>
-                <div class="report-row"><span>• 비교 대상 기업</span> <strong>${tabA.name} vs ${tabB.name}</strong></div>
-                <div class="report-row"><span>• 매출액 비교</span> <strong>${tabA.name}: ${dataA.rev.toLocaleString()}억원 ｜ ${tabB.name}: ${dataB.rev.toLocaleString()}억원</strong></div>
-                <div class="report-row"><span>• 영업이익 비교</span> <strong>${tabA.name}: ${dataA.op.toLocaleString()}억원 ｜ ${tabB.name}: ${dataB.op.toLocaleString()}억원</strong></div>
-                <div class="report-row"><span>• 영업이익률 비교</span> <strong>${tabA.name}: ${dataA.margin}% ｜ ${tabB.name}: ${dataB.margin}%</strong></div>
-                <div class="report-row"><span>• ROE (자기자본이익률) 비교</span> <strong>${tabA.name}: ${dataA.roe}% ｜ ${tabB.name}: ${dataB.roe}%</strong></div>
-                <div class="report-row"><span>• 부채비율 비교</span> <strong>${tabA.name}: ${dataA.debt}% ｜ ${tabB.name}: ${dataB.debt}%</strong></div>
+                <div class="report-row"><span>• 비교 대상 기업</span> <strong>${tabObj.tabA.name} vs ${tabObj.tabB.name}</strong></div>
+                <div class="report-row"><span>• 매출액 비교</span> <strong>${tabObj.tabA.name}: ${dataA.rev.toLocaleString()}억원 ｜ ${tabObj.tabB.name}: ${dataB.rev.toLocaleString()}억원</strong></div>
+                <div class="report-row"><span>• 영업이익 비교</span> <strong>${tabObj.tabA.name}: ${dataA.op.toLocaleString()}억원 ｜ ${tabObj.tabB.name}: ${dataB.op.toLocaleString()}억원</strong></div>
+                <div class="report-row"><span>• 영업이익률 비교</span> <strong>${tabObj.tabA.name}: ${dataA.margin}% ｜ ${tabObj.tabB.name}: ${dataB.margin}%</strong></div>
+                <div class="report-row"><span>• ROE (자기자본이익률) 비교</span> <strong>${tabObj.tabA.name}: ${dataA.roe}% ｜ ${tabObj.tabB.name}: ${dataB.roe}%</strong></div>
+                <div class="report-row"><span>• 부채비율 비교</span> <strong>${tabObj.tabA.name}: ${dataA.debt}% ｜ ${tabObj.tabB.name}: ${dataB.debt}%</strong></div>
                 <div class="report-text">
-                    본 그룹 비교 분석은 현재 열려 있는 탭 내에서 선택된 두 기업의 최근 결산 재무 데이터를 나란히 대조하여 수익성과 자본 효율성, 재무 건전성을 교차 검증합니다.
+                    본 그룹 비교 분석 탭은 선택된 두 기업의 최근 결산 재무 데이터를 나란히 대조하여 수익성과 자본 효율성, 재무 건전성을 교차 검증합니다.
                 </div>
 
                 <div class="report-section-title">2. 수익성 및 자본 효율성 평가</div>
                 <div class="report-text">
-                    • <strong>수익 마진 우위:</strong> 영업이익률 측면에서는 <strong>${Number(dataA.margin) >= Number(dataB.margin) ? tabA.name : tabB.name}</strong>이(가) 더 우수한 본업 마진 창출력을 보이고 있습니다.<br>
-                    • <strong>자본 활용도(ROE):</strong> 주주 자본 대비 순이익 창출 효율성은 <strong>${Number(dataA.roe) >= Number(dataB.roe) ? tabA.name : tabB.name}</strong>이(가) 더 높게 평가됩니다.
+                    • <strong>수익 마진 우위:</strong> 영업이익률 측면에서는 <strong>${Number(dataA.margin) >= Number(dataB.margin) ? tabObj.tabA.name : tabObj.tabB.name}</strong>이(가) 더 우수한 본업 마진 창출력을 보이고 있습니다.<br>
+                    • <strong>자본 활용도(ROE):</strong> 주주 자본 대비 순이익 창출 효율성은 <strong>${Number(dataA.roe) >= Number(dataB.roe) ? tabObj.tabA.name : tabObj.tabB.name}</strong>이(가) 더 높게 평가됩니다.
                 </div>
 
                 <div class="report-section-title">3. 재무 안정성 및 리스크 비교</div>
                 <div class="report-text">
-                    • 부채비율 관점에서 <strong>${Number(dataA.debt) <= Number(dataB.debt) ? tabA.name : tabB.name}</strong>이(가) 상대적으로 더 건전한 재무 구조를 유지하고 있습니다. 외부 환경 변화에 따른 재무적 유연성을 고려할 때 차입금 및 자본총계의 균형을 함께 모니터링해야 합니다.
+                    • 부채비율 관점에서 <strong>${Number(dataA.debt) <= Number(dataB.debt) ? tabObj.tabA.name : tabObj.tabB.name}</strong>이(가) 상대적으로 더 건전한 재무 구조를 유지하고 있습니다.
                 </div>
 
                 <div class="report-section-title">4. 종합 비교 결론</div>
                 <div class="report-text">
-                    두 기업 간의 10개년 재무 데이터 패턴을 종합할 때, 각 기업이 속한 산업의 특성과 성장 단계에 따라 외형 중심의 전략 또는 내실(수익성·안정성) 중심의 전략 차이가 뚜렷하게 관측됩니다. 투자 및 재무 검토 시 개별 지표뿐만 아니라 다각도 리스크 분산 관점이 요구됩니다.
+                    두 기업 간의 10개년 재무 데이터 패턴을 종합할 때, 각 기업이 속한 산업의 특성과 성장 단계에 따라 외형 중심의 전략 또는 내실 중심의 전략 차이가 관측됩니다.
                 </div>
             `;
 
             reportContainer.innerHTML = compareHTML;
-            // 활성 탭의 캐시에도 저장
-            const currentTab = openedTabs.find(t => t.code === activeTabCode);
-            if (currentTab) currentTab.reportCache = compareHTML;
+            tabObj.reportCache = compareHTML;
+
+            // 테이블 및 차트는 대조 요약으로 표시
+            tableBody.innerHTML = `
+                <tr><td class="center"><strong>${tabObj.tabA.name}</strong></td><td>${dataA.rev.toLocaleString()}억</td><td>${dataA.op.toLocaleString()}억</td><td>${dataA.margin}%</td><td>ROE ${dataA.roe}%</td><td>부채 ${dataA.debt}%</td></tr>
+                <tr><td class="center"><strong>${tabObj.tabB.name}</strong></td><td>${dataB.rev.toLocaleString()}억</td><td>${dataB.op.toLocaleString()}억</td><td>${dataB.margin}%</td><td>ROE ${dataB.roe}%</td><td>부채 ${dataB.debt}%</td></tr>
+            `;
+
+            // 비교 탭 선택 시 차트는 첫 번째 기업 기준으로 표시하거나 초기화
+            renderAllCharts(tabObj.tabA.sortedYears, {}, []);
         }
 
         function clearDashboard() {
+            document.getElementById("reportCardTitle").innerText = "A4 기업 실적 및 재무 심층 분석 보고서";
             document.getElementById("tableReportTitle").innerText = "10개년 재무제표 원자료 테이블";
             document.getElementById("tableBody").innerHTML = `<tr><td colspan="6" class="no-data">기업을 검색해 주세요.</td></tr>`;
-            document.getElementById("reportContainer").innerText = "상단의 [심층 분석 보고서 생성] 버튼을 누르거나 [그룹 비교 분석]을 실행해 주세요.";
+            document.getElementById("reportContainer").innerText = "상단의 [심층 분석 보고서 생성] 버튼을 누르거나 [그룹 비교 분석 탭 생성]을 실행해 주세요.";
             Object.keys(chartInstances).forEach(id => { if (chartInstances[id]) chartInstances[id].destroy(); });
         }
 
@@ -510,13 +552,10 @@
             return value;
         }
 
-        // 단일 기업 심층 분석 보고서 생성 함수
         function generateCorporateReport() {
-            const currentTab = openedTabs.find(t => t.code === activeTabCode);
-            const reportContainer = document.getElementById("reportContainer");
-
-            if (!currentTab || currentTab.sortedYears.length === 0) {
-                reportContainer.innerHTML = "분석할 기업 데이터가 없습니다. 먼저 상단에서 기업을 검색해주세요.";
+            const currentTab = openedTabs.find(t => t.id === activeTabId);
+            if (!currentTab || currentTab.type !== 'corp') {
+                alert("개별 기업 탭을 선택한 후 보고서를 생성해 주세요.");
                 return;
             }
 
@@ -600,28 +639,29 @@
                 </div>
             `;
 
-            reportContainer.innerHTML = reportHTML;
+            document.getElementById("reportContainer").innerHTML = reportHTML;
             currentTab.reportCache = reportHTML;
         }
 
         function downloadReportPDF() {
-            const currentTab = openedTabs.find(t => t.code === activeTabCode);
+            const currentTab = openedTabs.find(t => t.id === activeTabId);
             if (!currentTab || !currentTab.reportCache) {
-                alert("먼저 보고서를 생성하거나 비교 분석을 실행해 주세요.");
+                alert("먼저 보고서를 생성하거나 비교 분석 탭을 선택해 주세요.");
                 return;
             }
             window.print();
         }
 
-        function selectAndRenderCorp(selectedCorpCode, selectedCorpName, aliases = []) {
+        function selectAndRenderCorp(tabObj) {
+            document.getElementById("reportCardTitle").innerText = "A4 기업 실적 및 재무 심층 분석 보고서";
+            document.getElementById("tableReportTitle").innerText = `[${tabObj.name}] 10개년 재무제표 원자료 테이블`;
             const tableBody = document.getElementById("tableBody");
-            document.getElementById("tableReportTitle").innerText = `[${selectedCorpName}] 10개년 재무제표 원자료 테이블`;
 
             const corpRows = globalFinancialData.filter(item => {
                 const code = item.corp_code || item.회사고유번호 || item.stock_code || item.code || item.rcept_no;
                 const name = item.corp_name || item.회사명 || item.stock_name || item.name;
-                if (code && String(code).trim() === String(selectedCorpCode)) return true;
-                if (name && (String(name).trim() === selectedCorpName || aliases.includes(String(name).trim()))) return true;
+                if (code && String(code).trim() === String(tabObj.code)) return true;
+                if (name && (String(name).trim() === tabObj.name || tabObj.aliases.includes(String(name).trim()))) return true;
                 return false;
             });
             
@@ -701,21 +741,18 @@
             tableBody.innerHTML = bodyHTML;
             renderAllCharts(sortedYears, accountDataMap, corpRows);
 
-            const currentTab = openedTabs.find(t => t.code === selectedCorpCode);
-            if (currentTab) {
-                currentTab.sortedYears = sortedYearsArr;
-                currentTab.revValues = revArr;
-                currentTab.opValues = opArr;
-                currentTab.netValues = netArr;
-                currentTab.eqValues = eqArr;
-                currentTab.liabValues = liabArr;
-                
-                const reportContainer = document.getElementById("reportContainer");
-                if (currentTab.reportCache) {
-                    reportContainer.innerHTML = currentTab.reportCache;
-                } else {
-                    reportContainer.innerHTML = "상단의 [심층 분석 보고서 생성] 버튼을 누르거나 [그룹 비교 분석]을 실행해 주세요.";
-                }
+            tabObj.sortedYears = sortedYearsArr;
+            tabObj.revValues = revArr;
+            tabObj.opValues = opArr;
+            tabObj.netValues = netArr;
+            tabObj.eqValues = eqArr;
+            tabObj.liabValues = liabArr;
+            
+            const reportContainer = document.getElementById("reportContainer");
+            if (tabObj.reportCache) {
+                reportContainer.innerHTML = tabObj.reportCache;
+            } else {
+                reportContainer.innerHTML = "상단의 [심층 분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.";
             }
         }
 
