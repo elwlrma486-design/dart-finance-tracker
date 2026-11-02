@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DART 10년 재무분석 & 기업 분석 보고서</title>
+    <title>DART 10년 재무분석 & 그룹 비교 분석</title>
     <!-- Chart.js 그래프 라이브러리 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -22,13 +22,20 @@
         .progress-bar { width: 0%; height: 100%; background: #38bdf8; transition: width 0.3s ease; }
         #loadingSubText { font-size: 13px; color: #fbbf24; }
 
-        /* 검색 컨트롤 패널 */
+        /* 검색 및 그룹비교 컨트롤 패널 */
         .control-panel { background: var(--card-bg); padding: 15px 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-        .search-container { position: relative; flex: 1; min-width: 280px; }
+        .search-container { position: relative; flex: 1; min-width: 250px; }
         label { font-weight: bold; font-size: 12px; color: #94a3b8; display: block; margin-bottom: 5px; }
         input[type="text"] { width: 100%; padding: 10px 14px; font-size: 14px; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; box-sizing: border-box; outline: none; }
         input[type="text"]:focus { border-color: var(--accent); }
         
+        /* 그룹 비교 분석 셀렉트박스 스타일 */
+        .group-compare-container { display: flex; gap: 10px; align-items: flex-end; }
+        select.group-select { padding: 10px 14px; font-size: 13px; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; outline: none; cursor: pointer; }
+        select.group-select:focus { border-color: var(--accent); }
+        .btn-compare { background: #8b5cf6; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+        .btn-compare:hover { background: #7c3aed; }
+
         /* 자동완성 드롭다운 */
         .autocomplete-items { position: absolute; border: 1px solid #334155; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; background-color: #1e293b; border-radius: 0 0 6px 6px; max-height: 220px; overflow-y: auto; box-shadow: 0 8px 16px rgba(0,0,0,0.3); }
         .autocomplete-item { padding: 10px 14px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #334155; color: #f8fafc; }
@@ -71,7 +78,7 @@
         tr:nth-child(even) { background-color: #172033; }
         .no-data { text-align: center; padding: 40px; color: #64748b; font-size: 14px; }
 
-        /* A4 PDF 출력 전용 스타일 (인쇄 시 자동 적응) */
+        /* A4 PDF 출력 전용 스타일 */
         @media print {
             body { background: white !important; color: black !important; padding: 0 !important; }
             #loadingOverlay, header, .control-panel, .tabs-container, .charts-grid, .btn-group, #tableReportTitle, .table-responsive { display: none !important; }
@@ -89,24 +96,41 @@
     <!-- 로딩바 모달 -->
     <div id="loadingOverlay">
         <div class="spinner"></div>
-        <div id="loadingMessage">DART 재무 데이터 동기화 중 (1~43파트)...</div>
+        <div id="loadingMessage">DART 재무 데이터 동기화 중 (1~40파트)...</div>
         <div class="progress-bar-container">
             <div class="progress-bar" id="progressBar"></div>
         </div>
-        <div id="loadingSubText">모바일 최적화 로딩 시작...</div>
+        <div id="loadingSubText">모바일 메모리 안전 최적화 로딩...</div>
     </div>
 
     <header>
-        <h1>DART 10년 재무분석 & 기업 분석 보고서</h1>
-        <div class="subtitle">10개년 재무제표 원자료를 정밀 진단하여 A4 규격의 전문 분석 보고서를 자동 생성합니다. (최대 43파트 제한)</div>
+        <h1>DART 10년 재무분석 & 그룹 비교 분석</h1>
+        <div class="subtitle">1~40개 파트 안전 최적화 및 열린 탭 기반 그룹 비교 분석 지원</div>
     </header>
 
-    <!-- 검색 컨트롤 패널 -->
+    <!-- 검색 및 그룹 비교 컨트롤 패널 -->
     <div class="control-panel">
         <div class="search-container">
             <label for="corpSearchInput">기업 검색</label>
             <input type="text" id="corpSearchInput" placeholder="기업명을 입력하세요 (예: 삼성전자, SK하이닉스...)" oninput="onSearchInput(this.value)" autocomplete="off">
             <div id="autocompleteList" class="autocomplete-items"></div>
+        </div>
+
+        <!-- 그룹 비교 분석 패널 -->
+        <div class="group-compare-container">
+            <div>
+                <label for="groupSelectA">그룹 비교 대상</label>
+                <select id="groupSelectA" class="group-select">
+                    <option value="">-- 기업 선택 1 --</option>
+                </select>
+            </div>
+            <div>
+                <label for="groupSelectB" style="visibility: hidden;">vs</label>
+                <select id="groupSelectB" class="group-select">
+                    <option value="">-- 기업 선택 2 --</option>
+                </select>
+            </div>
+            <button class="btn-compare" onclick="executeGroupComparison()">그룹 비교 분석 실행</button>
         </div>
     </div>
 
@@ -143,7 +167,7 @@
             </div>
         </h3>
         <div id="reportContainer" class="report-content">
-            상단의 [심층 분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.
+            상단의 [심층 분석 보고서 생성] 버튼을 누르거나 [그룹 비교 분석]을 실행해 주세요.
         </div>
     </div>
 
@@ -177,11 +201,8 @@
         let openedTabs = []; 
         let activeTabCode = null;
 
-        // 모바일 접속 여부 감지
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
-        // [핵심 변경] 용량 최적화를 위해 최대 43번까지만 로드하도록 제한
-        const estimatedTotalParts = 43; 
+        const estimatedTotalParts = 40; // [핵심 수정] 40번 파트까지만 안전 로드
 
         window.addEventListener("DOMContentLoaded", async () => {
             const startTime = Date.now();
@@ -205,11 +226,10 @@
                     const elapsedSec = (Date.now() - startTime) / 1000;
                     document.getElementById("loadingSubText").innerText = `데이터 안전 동기화 중 (${partIndex}/${estimatedTotalParts} 파트) · ${Math.floor(elapsedSec)}초 경과`;
 
-                    // 모바일 기기의 메모리 보호 및 부하 방지 비동기 휴식
                     if (isMobile) {
-                        await new Promise(resolve => setTimeout(resolve, 30));
-                    } else if (partIndex % 4 === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 15));
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                    } else if (partIndex % 5 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 10));
                     }
 
                     partIndex++;
@@ -309,6 +329,7 @@
             }
             activeTabCode = code;
             renderTabs();
+            updateGroupSelectOptions(); // 그룹 비교 드롭다운 갱신
             selectAndRenderCorp(code, name, aliases);
         }
 
@@ -328,6 +349,7 @@
                 }
             }
             renderTabs();
+            updateGroupSelectOptions();
         }
 
         function renderTabs() {
@@ -346,10 +368,106 @@
             });
         }
 
+        // 열린 탭 목록을 그룹 비교 드롭다운 셀렉트에 반영
+        function updateGroupSelectOptions() {
+            const selA = document.getElementById("groupSelectA");
+            const selB = document.getElementById("groupSelectB");
+            const valA = selA.value;
+            const valB = selB.value;
+
+            let optionsHtml = `<option value="">-- 기업 선택 --</option>`;
+            openedTabs.forEach(t => {
+                optionsHtml += `<option value="${t.code}">${t.name}</option>`;
+            });
+
+            selA.innerHTML = optionsHtml;
+            selB.innerHTML = optionsHtml;
+
+            if (valA) selA.value = valA;
+            if (valB) selB.value = valB;
+        }
+
+        // 그룹 비교 분석 실행 함수
+        function executeGroupComparison() {
+            const codeA = document.getElementById("groupSelectA").value;
+            const codeB = document.getElementById("groupSelectB").value;
+            const reportContainer = document.getElementById("reportContainer");
+
+            if (!codeA || !codeB) {
+                alert("비교할 두 기업을 모두 선택해 주세요.");
+                return;
+            }
+            if (codeA === codeB) {
+                alert("서로 다른 두 기업을 선택해 주세요.");
+                return;
+            }
+
+            const tabA = openedTabs.find(t => t.code === codeA);
+            const tabB = openedTabs.find(t => t.code === codeB);
+
+            if (!tabA || !tabB) {
+                alert("선택한 기업의 데이터가 없습니다.");
+                return;
+            }
+
+            const getRecent = (tab) => {
+                const len = tab.sortedYears.length;
+                if (len === 0) return { rev: 0, op: 0, net: 0, eq: 0, liab: 0, margin: 0, roe: 0, debt: 0 };
+                const rev = tab.revValues[len - 1] || 0;
+                const op = tab.opValues[len - 1] || 0;
+                const net = tab.netValues[len - 1] || 0;
+                const eq = tab.eqValues[len - 1] || 0;
+                const liab = tab.liabValues[len - 1] || 0;
+                const margin = rev > 0 ? ((op / rev) * 100).toFixed(1) : 0;
+                const roe = eq > 0 ? ((net / eq) * 100).toFixed(1) : 0;
+                const debt = eq > 0 ? ((liab / eq) * 100).toFixed(1) : 0;
+                return { rev, op, net, margin, roe, debt };
+            };
+
+            const dataA = getRecent(tabA);
+            const dataB = getRecent(tabB);
+
+            let compareHTML = `
+                <div class="report-header-title">⚖️ [${tabA.name} vs ${tabB.name}] 그룹 재무 비교 분석 보고서</div>
+                
+                <div class="report-section-title">1. 최근 결산 기준 핵심 지표 대조</div>
+                <div class="report-row"><span>• 비교 대상 기업</span> <strong>${tabA.name} vs ${tabB.name}</strong></div>
+                <div class="report-row"><span>• 매출액 비교</span> <strong>${tabA.name}: ${dataA.rev.toLocaleString()}억원 ｜ ${tabB.name}: ${dataB.rev.toLocaleString()}억원</strong></div>
+                <div class="report-row"><span>• 영업이익 비교</span> <strong>${tabA.name}: ${dataA.op.toLocaleString()}억원 ｜ ${tabB.name}: ${dataB.op.toLocaleString()}억원</strong></div>
+                <div class="report-row"><span>• 영업이익률 비교</span> <strong>${tabA.name}: ${dataA.margin}% ｜ ${tabB.name}: ${dataB.margin}%</strong></div>
+                <div class="report-row"><span>• ROE (자기자본이익률) 비교</span> <strong>${tabA.name}: ${dataA.roe}% ｜ ${tabB.name}: ${dataB.roe}%</strong></div>
+                <div class="report-row"><span>• 부채비율 비교</span> <strong>${tabA.name}: ${dataA.debt}% ｜ ${tabB.name}: ${dataB.debt}%</strong></div>
+                <div class="report-text">
+                    본 그룹 비교 분석은 현재 열려 있는 탭 내에서 선택된 두 기업의 최근 결산 재무 데이터를 나란히 대조하여 수익성과 자본 효율성, 재무 건전성을 교차 검증합니다.
+                </div>
+
+                <div class="report-section-title">2. 수익성 및 자본 효율성 평가</div>
+                <div class="report-text">
+                    • <strong>수익 마진 우위:</strong> 영업이익률 측면에서는 <strong>${Number(dataA.margin) >= Number(dataB.margin) ? tabA.name : tabB.name}</strong>이(가) 더 우수한 본업 마진 창출력을 보이고 있습니다.<br>
+                    • <strong>자본 활용도(ROE):</strong> 주주 자본 대비 순이익 창출 효율성은 <strong>${Number(dataA.roe) >= Number(dataB.roe) ? tabA.name : tabB.name}</strong>이(가) 더 높게 평가됩니다.
+                </div>
+
+                <div class="report-section-title">3. 재무 안정성 및 리스크 비교</div>
+                <div class="report-text">
+                    • 부채비율 관점에서 <strong>${Number(dataA.debt) <= Number(dataB.debt) ? tabA.name : tabB.name}</strong>이(가) 상대적으로 더 건전한 재무 구조를 유지하고 있습니다. 외부 환경 변화에 따른 재무적 유연성을 고려할 때 차입금 및 자본총계의 균형을 함께 모니터링해야 합니다.
+                </div>
+
+                <div class="report-section-title">4. 종합 비교 결론</div>
+                <div class="report-text">
+                    두 기업 간의 10개년 재무 데이터 패턴을 종합할 때, 각 기업이 속한 산업의 특성과 성장 단계에 따라 외형 중심의 전략 또는 내실(수익성·안정성) 중심의 전략 차이가 뚜렷하게 관측됩니다. 투자 및 재무 검토 시 개별 지표뿐만 아니라 다각도 리스크 분산 관점이 요구됩니다.
+                </div>
+            `;
+
+            reportContainer.innerHTML = compareHTML;
+            // 활성 탭의 캐시에도 저장
+            const currentTab = openedTabs.find(t => t.code === activeTabCode);
+            if (currentTab) currentTab.reportCache = compareHTML;
+        }
+
         function clearDashboard() {
             document.getElementById("tableReportTitle").innerText = "10개년 재무제표 원자료 테이블";
             document.getElementById("tableBody").innerHTML = `<tr><td colspan="6" class="no-data">기업을 검색해 주세요.</td></tr>`;
-            document.getElementById("reportContainer").innerText = "상단의 [심층 분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.";
+            document.getElementById("reportContainer").innerText = "상단의 [심층 분석 보고서 생성] 버튼을 누르거나 [그룹 비교 분석]을 실행해 주세요.";
             Object.keys(chartInstances).forEach(id => { if (chartInstances[id]) chartInstances[id].destroy(); });
         }
 
@@ -392,7 +510,7 @@
             return value;
         }
 
-        // A4 2페이지 분량의 심층 기업 분석 보고서 생성 함수
+        // 단일 기업 심층 분석 보고서 생성 함수
         function generateCorporateReport() {
             const currentTab = openedTabs.find(t => t.code === activeTabCode);
             const reportContainer = document.getElementById("reportContainer");
@@ -457,7 +575,7 @@
                 <div class="report-row"><span>• 기초 vs 기말 매출액</span> <strong>${firstRev.toLocaleString()}억원 ➔ ${lastRev.toLocaleString()}억원 (${revGrowth >= 0 ? '+' : ''}${revGrowth}%)</strong></div>
                 <div class="report-row"><span>• 연평균 매출 성장률 (CAGR)</span> <strong>약 ${cagr}%</strong></div>
                 <div class="report-text">
-                    대상 기업 <strong>${name}</strong>은(는) ${firstYear}년부터 ${lastYear}년까지의 결산 기준 데이터를 바탕으로 분석한 결과, 누적 매출 연평균 성장률(CAGR) <strong>${cagr}%</strong>를 기록하며 사업 외형을 확장해 왔습니다. 산업 사이클 연동성에 따른 변동에도 불구하고 기초 대비 기말 매출액이 <strong>${revGrowth}%</strong> 변동하여 시장 지배력을 유지하거나 조율하는 단계에 있습니다.
+                    대상 기업 <strong>${name}</strong>은(는) ${firstYear}년부터 ${lastYear}년까지의 결산 기준 데이터를 바탕으로 분석한 결과, 누적 매출 연평균 성장률(CAGR) <strong>${cagr}%</strong>를 기록하며 사업 외형을 확장해 왔습니다.
                 </div>
 
                 <div class="report-section-title">2. 영업이익 변동성 및 핵심 수익성 진단</div>
@@ -466,29 +584,19 @@
                 <div class="report-row"><span>• 10개년 평균 영업이익률</span> <strong>약 ${avgMargin}%</strong></div>
                 <div class="report-row"><span>• 최근 결산 영업이익률 / ROE</span> <strong>${recentMargin}% / ROE ${recentRoe}%</strong></div>
                 <div class="report-text">
-                    영업이익 추이는 기업 본업의 마진율 체질을 결정짓습니다. 최상 실적을 거둔 ${maxOpYear}년(약 ${maxOp.toLocaleString()}억원) 대비, 최저점인 ${minOpYear}년(약 ${minOp.toLocaleString()}억원) 사이의 변동폭이 관측됩니다. 
-                    ${deficitYears.length > 0 ? `<span style="color:#f87171;">특히 ${deficitYears.join(', ')}년에는 영업 손실(적자) 구간이 발생한 바 있어, 원가율 절감 및 고정비 관리 체계 재정비가 필수적입니다.</span>` : `분석 기간 내 지속적인 영업 흑자를 유지하여 안정적인 본업 창출력을 보여주고 있습니다.`}
+                    영업이익 추이는 기업 본업의 마진율 체질을 결정짓습니다. 최근 결산 기준 영업이익률 <strong>${recentMargin}%</strong> 및 ROE <strong>${recentRoe}%</strong> 수준을 기록하고 있습니다.
                 </div>
 
                 <div class="report-section-title">3. 재무 건전성 및 리스크 자본 구조 평가</div>
                 <div class="report-row"><span>• 최근 결산 자본총계 / 부채총계</span> <strong>${recentEq.toLocaleString()}억원 / ${recentLiab.toLocaleString()}억원</strong></div>
                 <div class="report-row"><span>• 최근 결산 부채비율</span> <strong>${recentDebtRatio}%</strong></div>
                 <div class="report-text">
-                    최근 결산 기준 부채비율 <strong>${recentDebtRatio}%</strong> 수준은 타인 자본 의존도 및 금융 비용 부담 수준을 나타냅니다. 
-                    ${recentDebtRatio > 200 ? `부채비율이 200%를 초과하여 외부 재무 환경 변화에 따른 이자 비용 부담 및 유동성 관리에 각별한 주의가 요구됩니다.` : `부채비율이 200% 이하로 통제되고 있어 비교적 안정적인 자본 구조와 차입금 대응 능력을 확보하고 있는 것으로 판단됩니다.`}
+                    최근 결산 기준 부채비율 <strong>${recentDebtRatio}%</strong> 수준으로 자본 건전성 및 재무 유연성을 관리하고 있습니다.
                 </div>
 
-                <div class="report-section-title">4. 10개년 재무 팩트 체크 및 수치 종합 분석</div>
+                <div class="report-section-title">4. 종합 의견 및 전략적 제언</div>
                 <div class="report-text">
-                    • <strong>최근 년도 사업 실적:</strong> 매출액 ${recentRev.toLocaleString()}억원, 영업이익 ${recentOp.toLocaleString()}억원, 당기순이익 ${recentNet.toLocaleString()}억원 달성.<br>
-                    • <strong>수익성 평가:</strong> 매출액 대비 영업이익 마진율은 최근 ${recentMargin}%를 기록하여 10개년 평균(${avgMargin}%) 대비 ${recentMargin >= avgMargin ? '우수한' : '다소 하회하는'} 흐름입니다.<br>
-                    • <strong>자본 효율성(ROE):</strong> 자기자본을 활용한 당기순이익 창출력(ROE)은 ${recentRoe}%로 측정되었습니다.
-                </div>
-
-                <div class="report-section-title">5. 종합 의견 및 전략적 제언</div>
-                <div class="report-text">
-                    <strong>${name}</strong>의 10개년 실적 통합 결과, 본업에서의 매출 및 이익 안정성 강화를 바탕으로 사업 체질 개선을 지속해야 하는 기점에 서 있습니다. 
-                    1) 주력 제품/서비스의 영업이익률 회복 및 방어, 2) 금리 환경에 대응한 부채비율 및 차입금 구조 최적화, 3) 잉여 현금흐름 축적을 통한 성장 동력 확보가 향후 기업 가치 제고의 핵심 열쇠가 될 것입니다.
+                    <strong>${name}</strong>의 10개년 데이터 분석 결과, 향후 주력 사업 부문의 마진율 방어와 유동성 관리가 핵심 성공 요인입니다.
                 </div>
             `;
 
@@ -499,7 +607,7 @@
         function downloadReportPDF() {
             const currentTab = openedTabs.find(t => t.code === activeTabCode);
             if (!currentTab || !currentTab.reportCache) {
-                alert("먼저 [심층 분석 보고서 생성] 버튼을 눌러 보고서를 생성해 주세요.");
+                alert("먼저 보고서를 생성하거나 비교 분석을 실행해 주세요.");
                 return;
             }
             window.print();
@@ -606,7 +714,7 @@
                 if (currentTab.reportCache) {
                     reportContainer.innerHTML = currentTab.reportCache;
                 } else {
-                    reportContainer.innerHTML = "상단의 [심층 분석 보고서 생성] 버튼을 누르면 기업의 10개년 데이터를 심층 분석한 전문 보고서가 출력됩니다.";
+                    reportContainer.innerHTML = "상단의 [심층 분석 보고서 생성] 버튼을 누르거나 [그룹 비교 분석]을 실행해 주세요.";
                 }
             }
         }
